@@ -1,0 +1,14 @@
+{
+  "name": "xuri-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "序日：保存在本机浏览器的中文日常与项目计划管理工具",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs",
+    "test": "node tests/model.test.mjs",
+    "test:browser": "python3 -u tests/browser_test.py"
+  }
+}
