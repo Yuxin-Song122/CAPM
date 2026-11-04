@@ -2,13 +2,21 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#a85575" />
-    <meta name="description" content="序日：日历、日程与项目管理，数据保存到本机文件。" />
+    <meta name="xuri-storage" content="device" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="序日" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="序日：支持离线使用的个人日历、日程与项目管理工具。" />
     <title>序日 · 日常与计划</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css" />
-    <script type="module" src="/src/app.js"></script>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./src/pwa.js"></script>
+    <script type="module" src="./src/app.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到主要内容</a>

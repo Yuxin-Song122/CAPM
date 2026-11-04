@@ -30,6 +30,11 @@ const files = new Map([
   ['/src/app.js', ['src/app.js', 'text/javascript; charset=utf-8']],
   ['/src/model.js', ['src/model.js', 'text/javascript; charset=utf-8']],
   ['/src/storage.js', ['src/storage.js', 'text/javascript; charset=utf-8']],
+  ['/src/device-store.js', ['src/device-store.js', 'text/javascript; charset=utf-8']],
+  ['/src/pwa.js', ['src/pwa.js', 'text/javascript; charset=utf-8']],
+  ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
+  ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
+  ...['apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'].map((name) => [`/icons/${name}`, [`icons/${name}`, 'image/png']]),
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
 ]);
 function json(res, status, value) {
@@ -71,7 +76,8 @@ const server = http.createServer(async (req, res) => {
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405, { Allow: 'GET, HEAD' }).end(); return; }
     const file = files.get(requestPath);
     if (!file) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('页面不存在'); return; }
-    const body = await readFile(new URL(file[0], root));
+    let body = await readFile(new URL(file[0], root));
+    if (file[0] === 'index.html') body = Buffer.from(body.toString('utf8').replace(/<meta name="xuri-storage" content="device"\s*\/?>/, '<meta name="xuri-storage" content="disk" />'));
     res.writeHead(200, { 'Content-Type': file[1] });
     res.end(req.method === 'HEAD' ? undefined : body);
   } catch (error) {

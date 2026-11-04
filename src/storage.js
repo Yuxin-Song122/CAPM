@@ -14,5 +14,7 @@ async function request(options = {}) {
     throw new StorageError('无法连接本机服务。请保持启动窗口打开，再重试；本次操作未确认写入文件。', 0);
   } finally { clearTimeout(timeout); }
 }
-export const readDisk = () => request();
-export const writeDisk = (state, revision) => request({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state, revision }) });
+export const readDisk = () => isDeviceStorage ? readDevice() : request();
+export const writeDisk = (state, revision) => isDeviceStorage ? writeDevice(state, revision) : request({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state, revision }) });
+import { readDevice, writeDevice } from './device-store.js';
+export const isDeviceStorage = document.querySelector('meta[name="xuri-storage"]')?.content !== 'disk';

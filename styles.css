@@ -469,7 +469,7 @@ h2 { font-size: 17px; font-weight: 550; color: #5a474f; letter-spacing: .4px; li
   .progress-ring strong { font-size: 24px; }
   .archive-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 680px) {
+@media (max-width: 680px), (max-width: 1024px) and (pointer: coarse) {
   .sidebar { transform: translateX(-100%); transition: transform .2s; width: 246px; padding: 27px 18px 0; }
   .sidebar.is-open { transform: translateX(0); }
   .sidebar-scrim { position: fixed; inset: 0; background: #33202855; z-index: 29; backdrop-filter: blur(2px); }
@@ -596,7 +596,7 @@ h2 { font-size: 17px; font-weight: 550; color: #5a474f; letter-spacing: .4px; li
 .backup-status > div { min-width: 0; }
 .migration-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 8px; background: #f9edf3; font-size: 12px; line-height: 1.7; }
 .saved-status { font-size: 11px; }
-@media (max-width: 680px) {
+@media (max-width: 680px), (max-width: 1024px) and (pointer: coarse) {
   .intro-date-info { display: none; }
   .migration-banner { align-items: flex-start; flex-direction: column; }
   .metric-value { margin-top: 5px; font-size: 22px; }
@@ -606,4 +606,107 @@ h2 { font-size: 17px; font-weight: 550; color: #5a474f; letter-spacing: .4px; li
 @media (min-width: 681px) {
   .calendar-intro > div:first-child { display: flex; align-items: baseline; gap: 18px; }
   .calendar-intro .intro-copy { margin-top: 0; }
+}
+
+/* PWA/iPhone: preserve safe areas, usable text and touch targets. */
+html { min-height: 100%; -webkit-text-size-adjust: 100%; }
+body { min-height: 100vh; min-height: 100dvh; }
+body.project-menu-open { overflow: hidden; }
+.main-shell { min-height: 100dvh; }
+.sidebar { padding-top: max(30px, env(safe-area-inset-top)); padding-bottom: env(safe-area-inset-bottom); }
+.site-footer { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.drawer-close { display: none; }
+.install-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pwa-status { font-size: 11px; color: var(--muted); line-height: 1.7; }
+.pwa-install-steps { margin: 0; padding-left: 22px; line-height: 2; font-size: 13px; }
+.pwa-install-steps li + li { margin-top: 10px; }
+.pwa-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f9edf3; font-size: 12px; line-height: 1.7; }
+.footer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.install-steps { margin: 14px 0; padding-left: 22px; font-size: 13px; line-height: 1.9; }
+.install-steps li + li { margin-top: 9px; }
+.install-status { padding: 12px 14px; background: #f9edf3; border-radius: 7px; font-size: 12px; line-height: 1.8; }
+.modal { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.modal-header { position: sticky; top: 0; z-index: 2; background: #fffdfd; }
+.modal-footer { position: sticky; bottom: 0; z-index: 2; }
+@media (max-width: 680px), (max-width: 1024px) and (pointer: coarse) {
+  .sidebar { width: min(300px, calc(100vw - 48px)); padding-top: max(22px, env(safe-area-inset-top)); visibility: hidden; overscroll-behavior: contain; }
+  .sidebar.is-open { visibility: visible; }
+  .sidebar .brand { padding-right: 40px; }
+  .drawer-close { display: inline-flex; position: absolute; right: 10px; top: max(13px, env(safe-area-inset-top)); }
+  .sidebar .workspace-label { margin-top: 23px; margin-bottom: 15px; }
+  .sidebar-heading { margin-top: 21px; margin-bottom: 7px; font-size: 12px; }
+  .sidebar .project-nav { max-height: none; flex-shrink: 1; min-height: 44px; }
+  .sidebar .project-nav-item, .sidebar .nav-item { min-height: 48px; }
+  .sidebar .project-nav-text > span, .nav-item { font-size: 14px; }
+  .sidebar .project-nav-text > small { font-size: 11px; }
+  .sidebar .new-project-link { min-height: 44px; font-size: 12px; margin-bottom: 12px; }
+  .sidebar .backup-nav { min-height: 64px; }
+  .sidebar-bottom { padding-top: 16px; }
+  .sidebar-empty { font-size: 12px; }
+  .main-shell { margin-left: 0; }
+  .topbar { height: auto; min-height: 60px; padding-top: env(safe-area-inset-top); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .main-content { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+  .site-footer { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(16px, env(safe-area-inset-bottom)); font-size: 10px; flex-wrap: wrap; }
+  .site-footer button { font-size: 12px; min-height: 44px; }
+  .button, .icon-button, .icon-button.small, .topbar-actions .button, .section-heading > .button, .today-button { min-height: 44px; }
+  .icon-button, .icon-button.small, .mobile-menu { width: 44px; height: 44px; padding: 12px; }
+  .topbar-actions .button { font-size: 12px; }
+  .help-button { width: 44px; }
+  .breadcrumb { gap: 4px; }
+  .breadcrumb strong { font-size: 12px; }
+  .topbar-actions { gap: 4px; }
+  .calendar-toolbar { padding: 2px 8px; flex-wrap: wrap; column-gap: 4px; }
+  .month-picker { flex-shrink: 0; }
+  .month-picker select { font-size: 16px; min-height: 44px; }
+  .month-actions { margin-left: auto; }
+  .calendar-pager .icon-button { width: 44px; height: 44px; }
+  .calendar-pager .today-button { min-width: 44px; padding: 6px; }
+  .calendar-day { min-height: 46px; }
+  .day-number { font-size: 12px; }
+  .is-today .day-number { font-size: 11px; }
+  .metric-label { font-size: 11px; }
+  .metric-value > span { font-size: 10px; }
+  .intro-copy { font-size: 11px; }
+  .section-heading { margin-bottom: 10px; }
+  .section-heading h2 { font-size: 15px; }
+  .section-heading > .button { font-size: 11px; padding: 8px 11px; }
+  .calendar-footnote { font-size: 9px; }
+  .schedule-summary { font-size: 10px; }
+  .schedule-row { min-height: 96px; }
+  .schedule-item { gap: 7px; padding: 8px; }
+  .item-title { font-size: 13px; }
+  .project-tag, .independent-tag { font-size: 10px; }
+  .completion-control, .completion-control input { width: 44px; min-width: 44px; height: 44px; }
+  .completion-control > span { width: 20px; height: 20px; }
+  .completion-control .icon { width: 15px; height: 15px; }
+  .item-actions { flex-direction: column; opacity: 1; }
+  .item-actions .icon-button { width: 44px; height: 44px; min-height: 44px; padding: 13px; }
+  .item-actions .icon { width: 16px; height: 16px; }
+  .task-row { padding: 13px 9px; gap: 5px; }
+  .task-row .item-title { font-size: 13px; }
+  .task-row .item-actions { flex-direction: column; }
+  .task-date, .unscheduled-button { min-height: 44px; font-size: 11px; }
+  .task-tab { min-height: 48px; font-size: 11px; }
+  .task-tabs { gap: 18px; }
+  .modal, .modal.wide { width: calc(100vw - 20px); max-width: min(580px, calc(100vw - 20px)); max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); margin: auto; }
+  .modal-header { padding: 16px 18px 13px; }
+  .modal-header .icon-button { margin-top: -6px; }
+  .modal-body { padding: 17px 18px; }
+  .modal-footer { padding: 12px 18px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .field input, .field select, .field textarea { font-size: 16px; min-height: 44px; }
+  .field input { height: 44px; }
+  .field input[type=date], .field input[type=time] { -webkit-appearance: none; appearance: none; max-width: 100%; }
+  .field input[type=date]::-webkit-date-and-time-value, .field input[type=time]::-webkit-date-and-time-value { text-align: left; }
+  .schedule-toggle label, .completed-field { min-height: 44px; }
+  .schedule-toggle input, .completed-field input { width: 18px; height: 18px; }
+  .file-picker { min-height: 64px; }
+  .toast { bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+@media (max-width: 360px) {
+  .topbar-actions .button { padding-left: 8px; padding-right: 8px; }
+  .calendar-toolbar { padding-left: 7px; padding-right: 7px; }
+  .calendar-pager .icon-button { width: 44px; }
+  .calendar-day { padding-left: 2px; padding-right: 2px; }
+  .task-tabs { gap: 11px; padding-left: 11px; padding-right: 11px; }
+  .item-title { font-size: 12px; }
 }

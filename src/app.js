@@ -3,12 +3,14 @@ import {
   addDays, daysBetween, monthDays, projectItems, dayItems, progress,
   validateSnapshot, mergeSnapshots, removeExamples,
 } from './model.js';
-import { readDisk, writeDisk } from './storage.js';
+import { readDisk, writeDisk, isDeviceStorage } from './storage.js';
+import { pwaStatus, requestPwaUpdate } from './pwa.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app');
 const modal = $('#modal');
 const today = localDate();
+const savedLabel = () => isDeviceStorage ? '已保存到此设备' : '已保存到文件';
 const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const paths = {
   calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M16 3v4M8 3v4M3 11h18M8 15h2m4 0h2m-8 3h2"/>',
@@ -72,7 +74,7 @@ function updateSaveStatus() {
   const element = $('.saved-status');
   if (!element) return;
   element.classList.toggle('save-error', saveStatus === 'error');
-  element.innerHTML = `${icon(saveStatus === 'saved' ? 'checkCircle' : 'info')}${saveStatus === 'saving' ? '正在写入文件…' : saveStatus === 'error' ? '连接或保存失败' : '已保存到文件'}`;
+  element.innerHTML = `${icon(saveStatus === 'saved' ? 'checkCircle' : 'info')}${saveStatus === 'saving' ? '正在保存…' : saveStatus === 'error' ? '连接或保存失败' : savedLabel()}`;
   element.title = storagePath;
 }
 function applyDisk(result) {
@@ -132,9 +134,10 @@ const formFooter = (label = '保存') => `<footer class="modal-footer"><button t
 function sidebar() {
   const projects = state.projects.filter((p) => !p.archived);
   const archiveCount = state.projects.filter((p) => p.archived).length;
-  return `<aside class="sidebar ${ui.sidebarOpen ? 'is-open' : ''}" aria-label="项目导航">
-    <a class="brand" href="#" data-action="calendar" aria-label="序日，返回日历"><img src="/favicon.svg" alt="" width="39" height="39"><span>序日<small>日程与项目管理</small></span></a>
-    <div class="workspace-label"><span class="avatar">我</span><div>我的个人空间<small>本机文件存储</small></div><span class="workspace-dot"></span></div>
+  return `<aside id="project-sidebar" tabindex="-1" class="sidebar ${ui.sidebarOpen ? 'is-open' : ''}" aria-label="项目导航">
+    <button class="icon-button drawer-close" data-action="close-sidebar" aria-label="关闭项目栏">${icon('close')}</button>
+    <a class="brand" href="#" data-action="calendar" aria-label="序日，返回日历"><img src="./favicon.svg" alt="" width="39" height="39"><span>序日<small>日程与项目管理</small></span></a>
+    <div class="workspace-label"><span class="avatar">我</span><div>我的个人空间<small>${isDeviceStorage ? '此设备本地存储' : '本机文件存储'}</small></div><span class="workspace-dot"></span></div>
     <nav class="primary-nav"><button class="nav-item ${ui.view === 'calendar' ? 'active' : ''}" data-action="calendar" ${ui.view === 'calendar' ? 'aria-current="page"' : ''}>${icon('calendar')}<span>日历计划</span><span class="nav-shortcut">日常</span></button></nav>
     <div class="sidebar-heading"><span>我的项目 <b>${projects.length}</b></span><button class="icon-button small" data-action="new-project" aria-label="新增项目" title="新增项目">${icon('plus')}</button></div>
     <nav class="project-nav" aria-label="我的项目">${projects.map((p) => {
@@ -143,12 +146,12 @@ function sidebar() {
     }).join('') || '<p class="sidebar-empty">暂无项目，点击 + 新增</p>'}</nav>
     <button class="new-project-link" data-action="new-project">${icon('plus')}<span>新建一个项目</span></button>
     <button class="nav-item archived-nav ${ui.view === 'archive' ? 'active' : ''}" data-action="archive-view">${icon('archive')}<span>已归档</span><span class="archive-count">${archiveCount}</span></button>
-    <div class="sidebar-bottom"><button class="backup-nav" data-action="backup">${icon('laptop')}<span>数据与备份<small>保存到本机文件</small></span>${icon('chevron')}</button></div>
+    <div class="sidebar-bottom"><button class="backup-nav" data-action="backup">${icon('laptop')}<span>数据与备份<small>${isDeviceStorage ? '保存到此设备' : '保存到本机文件'}</small></span>${icon('chevron')}</button></div>
   </aside>${ui.sidebarOpen ? '<button class="sidebar-scrim" data-action="close-sidebar" aria-label="收起项目栏"></button>' : ''}`;
 }
 function header() {
   const name = ui.view === 'project' ? projectFor(ui.projectId)?.name : ui.view === 'archive' ? '已归档项目' : '日历计划';
-  return `<header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="toggle-sidebar" aria-label="打开项目栏">${icon('menu')}</button><span>我的空间</span><span class="breadcrumb-slash">/</span><strong>${esc(name)}</strong></div><div class="topbar-actions"><span class="saved-status">${icon('checkCircle')}已保存到文件</span><button class="icon-button help-button" data-action="help" aria-label="使用帮助" title="使用帮助">${icon('help')}</button><span class="topbar-divider"></span><button class="button primary" data-action="new-event">${icon('plus')}<span>新建日程</span></button></div></header>`;
+  return `<header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="toggle-sidebar" aria-label="打开项目栏" aria-controls="project-sidebar" aria-expanded="${ui.sidebarOpen}">${icon('menu')}</button><span>我的空间</span><span class="breadcrumb-slash">/</span><strong>${esc(name)}</strong></div><div class="topbar-actions"><span class="saved-status">${icon('checkCircle')}${savedLabel()}</span><button class="icon-button help-button" data-action="help" aria-label="使用帮助" title="使用帮助">${icon('help')}</button><span class="topbar-divider"></span><button class="button primary" data-action="new-event">${icon('plus')}<span>新建日程</span></button></div></header>`;
 }
 function metric(iconName, label, number, detail, color = 'sage') {
   return `<div class="metric"><span class="metric-icon ${color}">${icon(iconName)}</span><div><span class="metric-label">${label}</span><div class="metric-value">${number}<span>${detail}</span></div></div></div>`;
@@ -216,7 +219,7 @@ function render() {
   const focusAction = focus?.dataset?.action;
   const focusDate = focus?.dataset?.date;
   const focusComplete = focus?.dataset?.complete;
-  app.innerHTML = `${sidebar()}<div class="main-shell">${header()}<main id="main" class="main-content">${legacyPending ? '<div class="migration-banner"><span>检测到旧版浏览器数据，可合并保存到本机文件。</span><button class="text-button" data-action="migrate-legacy">迁移旧数据</button></div>' : ''}${ui.view === 'project' ? projectView() : ui.view === 'archive' ? archiveView() : calendarView()}</main><footer class="site-footer"><span>序日 <span class="footer-dot">·</span> 本机日程与项目管理</span><button data-action="help">使用指南 ${icon('arrow')}</button></footer></div>`;
+  app.innerHTML = `${sidebar()}<div class="main-shell">${header()}<main id="main" class="main-content">${pwaBanner()}${legacyPending ? '<div class="migration-banner"><span>检测到旧版浏览器数据，可迁移到当前保存位置。</span><button class="text-button" data-action="migrate-legacy">迁移旧数据</button></div>' : ''}${ui.view === 'project' ? projectView() : ui.view === 'archive' ? archiveView() : calendarView()}</main><footer class="site-footer"><span>序日 <span class="footer-dot">·</span> 个人日程与项目管理</span><div class="footer-actions">${isDeviceStorage ? '<button data-action="install-pwa">安装与离线</button>' : ''}<button data-action="help">使用指南 ${icon('arrow')}</button></div></footer></div>`;
   updateSaveStatus();
   try { sessionStorage.setItem('xuri.view', JSON.stringify({ ...ui, sidebarOpen: false })); } catch { /* View preferences are optional. */ }
   if (!modal.open) {
@@ -277,7 +280,7 @@ function download(name, text, type = 'application/json') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function backupDialog() {
-  showModal('数据与备份', '数据由正在运行的本机服务读写。', `<div class="modal-body backup-body">${formError}<div class="backup-status"><span class="metric-icon sage">${icon('checkCircle')}</span><div><strong>当前数据文件</strong><p class="storage-path">${esc(storagePath)}</p><p>${state.projects.length} 个项目 · ${state.items.length} 条任务与日程</p></div></div><section class="backup-block"><h3>${icon('download')}导出备份</h3><p>下载一份 JSON 文件，保留项目、任务、日程和完成状态。</p><button class="button secondary" data-action="export">${icon('download')}下载完整备份</button></section><section class="backup-block"><h3>${icon('upload')}导入备份</h3><p>选择之前导出的文件，检查内容后再确认导入。</p><label class="file-picker">${icon('upload')}<span>选择备份文件<small>JSON 格式，最大 5 MB</small></span><input type="file" id="import-file" accept=".json,application/json" aria-label="选择备份文件"></label><div id="import-preview" hidden></div></section><p class="storage-note">${icon('info')}关闭浏览器或清除网站数据不会删除数据文件。启动窗口须保持运行，文件保存在运行服务的电脑上。每次保存前保留上一版 data.previous.json；也可导出 JSON 另存备份。</p></div><footer class="modal-footer"><button type="button" class="button primary" data-action="close-modal">知道了</button></footer>`, true);
+  showModal('数据与备份', isDeviceStorage ? '项目与日程保存在此设备，不会上传到网站。' : '数据由正在运行的本机服务读写。', `<div class="modal-body backup-body">${formError}<div class="backup-status"><span class="metric-icon sage">${icon('checkCircle')}</span><div><strong>${isDeviceStorage ? '当前保存位置' : '当前数据文件'}</strong><p class="storage-path">${esc(storagePath)}</p><p>${state.projects.length} 个项目 · ${state.items.length} 条任务与日程</p></div></div><section class="backup-block"><h3>${icon('download')}导出备份</h3><p>下载 JSON 备份，包含全部项目、任务与完成状态。iPhone 可保存到「文件」，再使用下方导入恢复。</p><button class="button secondary" data-action="export">${icon('download')}下载完整备份</button></section><section class="backup-block"><h3>${icon('upload')}导入备份</h3><p>选择之前导出的文件，检查内容后再确认导入。</p><label class="file-picker">${icon('upload')}<span>选择备份文件<small>JSON 格式，最大 5 MB</small></span><input type="file" id="import-file" accept=".json,application/json" aria-label="选择备份文件"></label><div id="import-preview" hidden></div></section><p class="storage-note">${icon('info')}${isDeviceStorage ? '数据保存在当前设备的 IndexedDB 中。清除网站数据、卸载主屏幕应用或设备存储清理可能移除数据，请定期导出到「文件」。电脑与手机不自动同步。' : '关闭浏览器不会删除数据文件。启动窗口须保持运行，文件保存在运行服务的电脑上，每次保存前保留 data.previous.json。'}</p></div><footer class="modal-footer"><button type="button" class="button primary" data-action="close-modal">知道了</button></footer>`, true);
 }
 async function readImport(file) {
   pendingImport = null;
@@ -298,8 +301,19 @@ async function readImport(file) {
     errorMessage(error instanceof SyntaxError ? '文件不是有效的 JSON，请选择从序日导出的备份文件。' : error.message);
   } finally { importBusy = false; }
 }
+function pwaBanner() {
+  if (!isDeviceStorage) return '';
+  const status = pwaStatus();
+  let label = status.offline ? (status.ready ? '离线模式 · 数据仍保存在此设备' : '当前离线，离线资源尚未就绪') : status.ready ? '' : '正在准备离线资源，请保持联网直至完成。';
+  if (status.error) label = status.error;
+  return `${label ? `<div class="pwa-banner" role="status">${esc(label)}</div>` : ''}${status.updateAvailable ? '<div class="pwa-banner"><span>应用有新版本，已保存的数据会保留。</span><button class="text-button" data-action="update-pwa">更新应用</button></div>' : ''}`;
+}
+function installDialog() {
+  const status = pwaStatus();
+  showModal('安装与离线使用', '', `<div class="modal-body help-body"><h3>${status.standalone ? '已在独立应用模式中运行' : '在 iPhone 添加到主屏幕'}</h3><ol class="install-steps"><li>使用 Safari 打开本应用的 HTTPS 网址。</li><li>点击 Safari 的「分享」，选择「添加到主屏幕」。部分版本在「更多」中显示该选项；若有「作为 Web App 打开」，请保持启用。</li><li>名称保留为「序日」，点击「添加」。</li><li>从主屏幕打开，联网等待下方显示「离线已就绪」，再尝试飞行模式。</li></ol><p class="install-status" role="status">${status.ready ? '离线已就绪：可断网打开、修改项目和日程。' : status.error ? '离线未就绪，请联网后刷新重试。' : '离线资源准备中，请保持联网。'}</p><p class="storage-note">建议先安装再正式录入数据。Safari 标签页与主屏幕应用在部分 iOS 版本可能使用不同的存储空间；可通过 JSON 备份迁移。提醒通知、电脑与手机自动同步均未实现。</p></div><footer class="modal-footer"><button class="button primary" data-action="close-modal">关闭</button></footer>`, true);
+}
 function helpDialog() {
-  showModal('使用指南', '', `<div class="modal-body help-body"><div class="help-step"><span>01</span><div><h3>项目与任务</h3><p>左侧新增项目，填写目标与截止日期。在项目详情添加任务，点击「安排时间」后自动显示到日历；两处的修改与完成状态同步。</p></div></div><div class="help-step"><span>02</span><div><h3>日历与独立日程</h3><p>选择年月和日期，下方显示当天时间表。「添加日程」可选择关联项目，也可独立存在。铅笔用于编辑，垃圾桶用于删除。</p></div></div><div class="help-step"><span>03</span><div><h3>保存位置</h3><p>每次修改由本机服务写入数据文件，成功后显示「已保存到文件」。请保持启动窗口打开。实际位置：${esc(storagePath)}。</p></div></div><div class="help-step"><span>04</span><div><h3>备份与恢复</h3><p>左下角「数据与备份」支持导出、合并或替换导入。文件夹中的 data.previous.json 保留上一次保存的版本；旧版浏览器数据可迁移到文件。</p></div></div></div><footer class="modal-footer"><button type="button" class="button primary" data-action="close-modal">关闭</button></footer>`, true);
+  showModal('使用指南', '', `<div class="modal-body help-body"><div class="help-step"><span>01</span><div><h3>项目与任务</h3><p>左侧新增项目，填写目标和截止日期。在项目详情添加任务，安排时间后显示到当天时间表。两处修改与完成状态同步；手机用左上角菜单展开项目栏。</p></div></div><div class="help-step"><span>02</span><div><h3>月历与日程</h3><p>切换年月、选择日期，下方显示时间表。日程可关联项目，也可独立存在。方框标记完成，铅笔编辑，垃圾桶删除。</p></div></div><div class="help-step"><span>03</span><div><h3>数据保存</h3><p>${isDeviceStorage ? '当前使用设备本地存储。首次联网完成离线资源准备后，断网也能打开和保存。请定期导出 JSON 备份到「文件」。清除网站数据或卸载应用可能删除记录。' : '每次修改由本机服务写入文件，请保持启动窗口运行。保存位置：' + esc(storagePath)}</p></div></div><div class="help-step"><span>04</span><div><h3>备份与设备</h3><p>「数据与备份」可导出或导入。电脑和手机的数据分别保存，尚未实现跨设备自动同步或提醒通知。iPhone 安装步骤见「安装与离线」。</p></div></div></div><footer class="modal-footer">${isDeviceStorage ? '<button class="button secondary" data-action="help-install">安装与离线</button>' : ''}<button class="button primary" data-action="close-modal">关闭</button></footer>`, true);
 }
 
 document.addEventListener('click', async (event) => {
@@ -310,6 +324,9 @@ document.addEventListener('click', async (event) => {
   const item = id ? state?.items.find((i) => i.id === id) : null;
   const project = id ? projectFor(id) : null;
   switch (action) {
+    case 'help-install': closeModal(); installDialog(); break;
+    case 'install-pwa': installDialog(); break;
+    case 'update-pwa': await requestPwaUpdate(); break;
     case 'calendar': navigate('calendar'); break;
     case 'open-project': navigate('project', id); break;
     case 'archive-view': navigate('archive'); break;
@@ -367,7 +384,7 @@ document.addEventListener('click', async (event) => {
       } catch (error) { errorMessage(`旧数据无法迁移：${error.message}。可先下载原始数据备份。`); }
       break;
     case 'confirm-migrate':
-      if (await commit(mergeSnapshots(state, validateSnapshot(JSON.parse(rawStored))), '旧数据已保存到文件')) {
+      if (await commit(mergeSnapshots(state, validateSnapshot(JSON.parse(rawStored))), '旧数据已迁移')) {
         markMigrated(); closeModal(); render();
       }
       break;
@@ -411,7 +428,7 @@ modal.addEventListener('submit', async (event) => {
       if (id) { const index = next.items.findIndex((i) => i.id === id); touchProject(next, next.items[index].projectId); next.items[index] = item; }
       else next.items.push(item);
       touchProject(next, projectId);
-    }, id ? '计划已更新，项目与日历已同步' : '已保存到文件')) {
+    }, id ? '计划已更新，项目与日历已同步' : savedLabel())) {
       closeModal();
       if (ui.view === 'calendar' && item.date) selectDate(item.date);
     }
@@ -433,7 +450,7 @@ function markMigrated() {
   try { localStorage.setItem('xuri.disk-migration.v1', storagePath); } catch { /* Only a migration preference. */ }
 }
 function recoveryScreen(message) {
-  app.innerHTML = `<main class="recovery"><img src="/favicon.svg" alt="序日" width="52" height="52"><h1>无法读取数据文件</h1><p>${esc(message)}</p><p>请检查启动窗口和数据目录，修复后重新连接。已有文件不会自动重置。</p><div>${rawStored ? '<button class="button secondary" data-action="download-recovery">下载浏览器旧数据</button>' : ''}<button class="button primary" data-action="retry-load">重新连接</button></div></main>`;
+  app.innerHTML = `<main class="recovery"><img src="./favicon.svg" alt="序日" width="52" height="52"><h1>${isDeviceStorage ? '无法读取此设备的数据' : '无法读取数据文件'}</h1><p>${esc(message)}</p><p>${isDeviceStorage ? '请确认使用普通浏览模式且允许本地存储。已有记录不会自动重置；如有备份，请先保留。' : '请检查启动窗口和数据目录，修复后重新连接。已有文件不会自动重置。'}</p><div>${rawStored ? '<button class="button secondary" data-action="download-recovery">下载浏览器旧数据</button>' : ''}<button class="button primary" data-action="retry-load">重新连接</button></div></main>`;
 }
 async function syncDisk() {
   if (!state || saveBusy || syncBusy || document.hidden) return;
@@ -442,7 +459,7 @@ async function syncDisk() {
     const previousRevision = revision;
     const result = await readDisk();
     if (saveBusy || previousRevision !== revision) return;
-    if (!result.state) throw new Error('数据文件已被移除，请检查数据目录。');
+    if (!result.state) throw new Error('数据已被移除，请检查保存位置。');
     if (result.revision !== revision) {
       const editing = modal.open;
       if (editing) closeModal();
@@ -454,7 +471,7 @@ async function syncDisk() {
   finally { syncBusy = false; }
 }
 async function init() {
-  app.innerHTML = '<main class="recovery"><h1>正在读取数据文件…</h1></main>';
+  app.innerHTML = '<main class="recovery"><h1>正在读取数据…</h1></main>';
   try {
     try { rawStored = localStorage.getItem(STORAGE_KEY); } catch { /* File storage works without browser storage. */ }
     let result = await readDisk();
@@ -486,4 +503,8 @@ async function init() {
     document.addEventListener('visibilitychange', syncDisk);
   } catch (error) { recoveryScreen(error.message); }
 }
+document.addEventListener('xuri:pwa-status', () => {
+  if (state && !saveBusy) render();
+  if (modal.open && $('.install-status', modal)) { const status = pwaStatus(); $('.install-status', modal).textContent = status.ready ? '离线已就绪：可断网打开、修改项目和日程。' : status.error ? '离线未就绪，请联网后刷新重试。' : '离线资源准备中，请保持联网。'; }
+});
 init();
