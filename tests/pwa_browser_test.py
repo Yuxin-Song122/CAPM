@@ -78,7 +78,8 @@ def failed_first_install(playwright, options, public, base):
                 page = context.pages[0]
                 page.goto(base)
                 expect(page.get_by_role("heading", level=1)).to_have_text("日历计划")
-                page.wait_for_function("async () => {const s = (await import('./src/pwa.js')).pwaStatus(); return Boolean(s.error) && !s.ready;}", timeout=15000)
+                page.evaluate("async () => { window._pwaModule = await import('./src/pwa.js'); }")
+                page.wait_for_function("() => { const s = window._pwaModule.pwaStatus(); return Boolean(s.error) && !s.ready; }", timeout=15000)
                 status = page.evaluate("async () => (await import('./src/pwa.js')).pwaStatus()")
                 check(status["error"] and not status["ready"], "离线资源首次下载失败仍显示为准备中")
                 check(not page.evaluate("async () => Boolean(await caches.match(new URL('./index.html', location.href).href))"), "失败的首次安装留下了不完整离线缓存")
@@ -134,10 +135,15 @@ def run():
                 page.on("request", lambda request: api_requests.append(request.url) if "/api/" in request.url else None)
                 page.goto(base)
                 expect(page.get_by_role("heading", level=1)).to_have_text("日历计划")
-                page.wait_for_function("async () => (await import('./src/pwa.js')).pwaStatus().ready", timeout=20000)
+                page.evaluate("async () => { window._pwaModule = await import('./src/pwa.js'); }")
+                page.wait_for_function("() => window._pwaModule.pwaStatus().ready", timeout=20000)
                 check(page.evaluate("Boolean(navigator.serviceWorker.controller)"), "Service Worker 没有控制页面")
                 check(page.locator('meta[name="apple-mobile-web-app-capable"]').get_attribute("content") == "yes", "缺少 iOS 主屏幕独立窗口声明")
                 check(page.locator('link[rel="apple-touch-icon"]').count() == 1, "缺少 iPhone 主屏幕图标")
+                expect(page.locator("#calendar-content")).to_be_hidden()
+                expect(page.locator(".overview-metrics .metric")).to_have_count(2)
+                page.get_by_role("button", name="展开月历", exact=True).click()
+                expect(page.locator("#calendar-content")).to_be_visible()
                 modal = page.locator("#modal")
 
                 # Touch drawer, keyboard dismissal and focus containment.
@@ -228,6 +234,7 @@ def run():
                 page.goto(base)
                 expect(page.get_by_role("heading", level=1)).to_have_text("日历计划")
                 # Session selection can reset after a complete browser restart.
+                if not page.locator("#calendar-content").is_visible(): page.get_by_role("button", name="展开月历", exact=True).click()
                 page.get_by_role("combobox", name="年份", exact=True).select_option("2027")
                 page.get_by_role("combobox", name="月份", exact=True).select_option("0")
                 page.locator('[data-date="2027-01-19"]').click()

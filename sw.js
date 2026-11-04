@@ -3,7 +3,7 @@ const CACHE_PREFIX = 'xuri-shell-';
 const CACHE_NAME = `${CACHE_PREFIX}2026-11-04-pwa-v1`;
 const ASSETS = [
   './index.html', './styles.css', './favicon.svg', './manifest.webmanifest',
-  './src/app.js', './src/model.js', './src/storage.js', './src/device-store.js', './src/pwa.js',
+  './src/app.js', './src/push-client.js', './src/model.js', './src/storage.js', './src/device-store.js', './src/pwa.js',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ].map((asset) => new URL(asset, self.registration.scope).href);
 const INDEX = new URL('./index.html', self.registration.scope).href;
@@ -57,5 +57,29 @@ self.addEventListener('fetch', (event) => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     return await cache.match(asset) || fetch(request);
+  })());
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data?.json() || {}; } catch { /* Still show a visible fallback. */ }
+  event.waitUntil(self.registration.showNotification('序日提醒', {
+    body: typeof data.body === 'string' ? data.body.slice(0, 500) : '有一项日程即将开始，请打开序日查看。',
+    icon: new URL('./icons/icon-192.png', self.registration.scope).href,
+    badge: new URL('./icons/icon-192.png', self.registration.scope).href,
+    tag: `${data.itemId || 'test'}-${data.startAt || ''}-${data.offsetMinutes || 0}`,
+    data: { startAt: data.startAt },
+  }));
+});
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL('./', self.registration.scope);
+  const start = new Date(event.notification.data?.startAt);
+  if (Number.isFinite(start.getTime())) target.searchParams.set('date', `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`);
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const current = clients.find((client) => client.url.startsWith(self.registration.scope));
+    if (current) { await current.navigate(target.href); await current.focus(); }
+    else await self.clients.openWindow(target.href);
   })());
 });

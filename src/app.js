@@ -5,11 +5,13 @@ import {
 } from './model.js';
 import { readDisk, writeDisk, isDeviceStorage } from './storage.js';
 import { pwaStatus, requestPwaUpdate } from './pwa.js';
+import { initPush, pushStatus, pushSupport, connectPush, disconnectPush, syncPush, testPush } from './push-client.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app');
 const modal = $('#modal');
 const today = localDate();
+const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.2.1';
 const savedLabel = () => isDeviceStorage ? '已保存到此设备' : '已保存到文件';
 const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const paths = {
@@ -56,7 +58,7 @@ let saveBusy = false;
 let saveStatus = 'saved';
 let syncBusy = false;
 let legacyPending = false;
-let ui = { view: 'calendar', selectedDate: today, year: parseDate(today).getFullYear(), month: parseDate(today).getMonth(), projectId: null, filter: 'all', sidebarOpen: false };
+let ui = { view: 'calendar', selectedDate: today, year: parseDate(today).getFullYear(), month: parseDate(today).getMonth(), projectId: null, filter: 'all', sidebarOpen: false, calendarExpanded: false };
 
 function toast(message) {
   const element = $('#toast');
@@ -95,6 +97,7 @@ async function commit(change, message) {
     applyDisk(await writeDisk(validateSnapshot(next), revision));
     saveStatus = 'saved';
     render();
+    void syncPush();
     if (message) toast(message);
     return true;
   } catch (error) {
@@ -146,7 +149,7 @@ function sidebar() {
     }).join('') || '<p class="sidebar-empty">暂无项目，点击 + 新增</p>'}</nav>
     <button class="new-project-link" data-action="new-project">${icon('plus')}<span>新建一个项目</span></button>
     <button class="nav-item archived-nav ${ui.view === 'archive' ? 'active' : ''}" data-action="archive-view">${icon('archive')}<span>已归档</span><span class="archive-count">${archiveCount}</span></button>
-    <div class="sidebar-bottom"><button class="backup-nav" data-action="backup">${icon('laptop')}<span>数据与备份<small>${isDeviceStorage ? '保存到此设备' : '保存到本机文件'}</small></span>${icon('chevron')}</button></div>
+    <div class="sidebar-bottom">${isDeviceStorage ? `<button class="backup-nav" data-action="push-settings">${icon('clock')}<span>系统提醒<small>${pushStatus().connected ? '已连接后台 · 3 次提醒' : '未连接推送后台'}</small></span>${icon('chevron')}</button>` : ''}<button class="backup-nav" data-action="backup">${icon('laptop')}<span>数据与备份<small>${isDeviceStorage ? '保存到此设备' : '保存到本机文件'}</small></span>${icon('chevron')}</button></div>
   </aside>${ui.sidebarOpen ? '<button class="sidebar-scrim" data-action="close-sidebar" aria-label="收起项目栏"></button>' : ''}`;
 }
 function header() {
@@ -160,15 +163,14 @@ function calendarView() {
   const selected = dayItems(state, ui.selectedDate);
   const selectedStats = progress(selected);
   const todayStats = progress(dayItems(state, today));
-  const activeCount = state.projects.filter((p) => !p.archived).length;
   const counts = new Map();
   state.items.forEach((item) => { if (item.date) { if (!counts.has(item.date)) counts.set(item.date, []); counts.get(item.date).push(item); } });
   const years = Array.from({ length: 201 }, (_, i) => 1900 + i);
   const hasExamples = state.projects.some((p) => p.isDemo) || state.items.some((item) => item.isDemo);
   const selectedLabel = `${dateText(ui.selectedDate)} · ${weekdays[parseDate(ui.selectedDate).getDay()]}`;
   return `<section class="page-intro calendar-intro"><div><h1 id="page-title" tabindex="-1">日历计划</h1><p class="intro-copy">${dateText(today, true)} · ${weekdays[parseDate(today).getDay()]}</p></div><div class="intro-date-info">项目任务与独立日程</div></section>
-    <section class="metrics" aria-label="计划概览">${metric('calendar', '今日安排', todayStats.total, '项')}${metric('checkCircle', '今日已完成', todayStats.completed, `/ ${todayStats.total} 项`, 'clay')}${metric('folder', '进行中的项目', activeCount, '个', 'blue')}</section>
-    <section class="calendar-card panel" aria-label="月历"><div class="calendar-toolbar"><div class="month-picker"><label class="sr-only" for="calendar-year">年份</label><select id="calendar-year" aria-label="年份">${years.map((year) => `<option value="${year}" ${year === ui.year ? 'selected' : ''}>${year} 年</option>`).join('')}</select><label class="sr-only" for="calendar-month">月份</label><select id="calendar-month" aria-label="月份">${Array.from({ length: 12 }, (_, i) => `<option value="${i}" ${i === ui.month ? 'selected' : ''}>${i + 1} 月</option>`).join('')}</select></div><div class="month-actions"><span class="calendar-legend"><span></span>有安排</span><div class="calendar-pager"><button class="icon-button" data-action="prev-month" aria-label="上个月" ${ui.year === 1900 && ui.month === 0 ? 'disabled' : ''}>${icon('chevron', 'rotate')}</button><button class="today-button" data-action="today">今天</button><button class="icon-button" data-action="next-month" aria-label="下个月" ${ui.year === 2100 && ui.month === 11 ? 'disabled' : ''}>${icon('chevron')}</button></div></div></div>
+    <section class="metrics overview-metrics" aria-label="计划概览">${metric('calendar', '今日安排', todayStats.total, '项')}${metric('checkCircle', '今日已完成', todayStats.completed, `/ ${todayStats.total} 项`, 'clay')}</section>
+    <section class="calendar-card panel" aria-label="月历"><button type="button" class="calendar-toggle" data-action="toggle-calendar" aria-controls="calendar-content" aria-expanded="${ui.calendarExpanded}" aria-label="${ui.calendarExpanded ? '收起月历' : '展开月历'}"><span class="calendar-toggle-title">${icon('calendar')}<span>月历</span><small class="calendar-selection">${dateText(ui.selectedDate, true)}</small></span><span class="calendar-toggle-action"><span class="calendar-toggle-label">${ui.calendarExpanded ? '收起月历' : '展开月历'}</span>${icon('chevron')}</span></button><div id="calendar-content" class="calendar-content" ${ui.calendarExpanded ? '' : 'hidden'}><div class="calendar-toolbar"><div class="month-picker"><label class="sr-only" for="calendar-year">年份</label><select id="calendar-year" aria-label="年份">${years.map((year) => `<option value="${year}" ${year === ui.year ? 'selected' : ''}>${year} 年</option>`).join('')}</select><label class="sr-only" for="calendar-month">月份</label><select id="calendar-month" aria-label="月份">${Array.from({ length: 12 }, (_, i) => `<option value="${i}" ${i === ui.month ? 'selected' : ''}>${i + 1} 月</option>`).join('')}</select></div><div class="month-actions"><span class="calendar-legend"><span></span>有安排</span><div class="calendar-pager"><button class="icon-button" data-action="prev-month" aria-label="上个月" ${ui.year === 1900 && ui.month === 0 ? 'disabled' : ''}>${icon('chevron', 'rotate')}</button><button class="today-button" data-action="today">今天</button><button class="icon-button" data-action="next-month" aria-label="下个月" ${ui.year === 2100 && ui.month === 11 ? 'disabled' : ''}>${icon('chevron')}</button></div></div></div>
     <div class="weekdays" aria-hidden="true">${['一', '二', '三', '四', '五', '六', '日'].map((day) => `<span>${day}</span>`).join('')}</div>
     <div class="calendar-grid" role="group" aria-label="选择日期">${monthDays(ui.year, ui.month).map((date) => {
       const inMonth = parseDate(date).getMonth() === ui.month;
@@ -176,7 +178,7 @@ function calendarView() {
       const isToday = date === today;
       const isSelected = date === ui.selectedDate;
       return `<button class="calendar-day ${inMonth ? '' : 'other-month'} ${isToday ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''}" data-action="select-date" data-date="${date}" aria-label="${dateText(date, true)}${isToday ? '，今天' : ''}，${items.length} 项安排" aria-pressed="${isSelected}" ${!validDate(date) ? 'disabled' : ''}><span class="day-top"><span class="day-number">${parseDate(date).getDate()}</span>${isSelected ? `<span class="selected-label">${isToday ? '今天' : '已选择'}</span>` : ''}</span><span class="day-events">${items.slice(0, 1).map((item) => `<span class="day-event ${projectFor(item.projectId)?.color || 'blue'} ${item.completed ? 'completed' : ''}"><i></i><span>${esc(item.title)}</span></span>`).join('')}${items.length > 1 ? `<span class="more-events" title="另 ${items.length - 1} 项安排">+${items.length - 1}</span>` : ''}</span></button>`;
-    }).join('')}</div><div class="calendar-footnote"><span>${icon('info')}选择日期查看日程</span><span>${ui.month + 1} 月共 ${state.items.filter((item) => item.date?.startsWith(`${ui.year}-${String(ui.month + 1).padStart(2, '0')}`)).length} 项日程</span></div></section>
+    }).join('')}</div><div class="calendar-footnote"><span>${icon('info')}选择日期查看日程</span><span>${ui.month + 1} 月共 ${state.items.filter((item) => item.date?.startsWith(`${ui.year}-${String(ui.month + 1).padStart(2, '0')}`)).length} 项日程</span></div></div></section>
     <section class="schedule-section" aria-label="当天时间表"><div class="section-heading"><div><h2>${selectedLabel}${ui.selectedDate === today ? '<span class="today-tag">今天</span>' : ''}</h2></div><button class="button secondary" data-action="new-event">${icon('plus')}添加日程</button></div><div class="schedule-card panel"><div class="schedule-summary"><span><i class="small-dot"></i>这一天的时间表</span><span>${selected.length ? `${selected.length} 项安排 <span class="muted">/ 已完成 ${selectedStats.completed} 项</span>` : '暂无日程'}</span></div>${selected.length ? `<div class="timeline">${selected.map((item) => scheduleRow(item, selected)).join('')}</div><div class="schedule-finish"><span>完成进度</span><div class="progress-track"><span style="width:${selectedStats.percent}%"></span></div><b>${selectedStats.percent}%</b></div>` : emptyState('calendar', '当天暂无日程', '点击添加日程，或从项目中安排任务。', '添加第一条日程', 'new-event')}</div></section>
     ${hasExamples ? '<div class="example-note"><span>当前包含示例数据。</span><button data-action="clear-examples">清除示例</button></div>' : ''}`;
 }
@@ -219,7 +221,7 @@ function render() {
   const focusAction = focus?.dataset?.action;
   const focusDate = focus?.dataset?.date;
   const focusComplete = focus?.dataset?.complete;
-  app.innerHTML = `${sidebar()}<div class="main-shell">${header()}<main id="main" class="main-content">${pwaBanner()}${legacyPending ? '<div class="migration-banner"><span>检测到旧版浏览器数据，可迁移到当前保存位置。</span><button class="text-button" data-action="migrate-legacy">迁移旧数据</button></div>' : ''}${ui.view === 'project' ? projectView() : ui.view === 'archive' ? archiveView() : calendarView()}</main><footer class="site-footer"><span>序日 <span class="footer-dot">·</span> 个人日程与项目管理</span><div class="footer-actions">${isDeviceStorage ? '<button data-action="install-pwa">安装与离线</button>' : ''}<button data-action="help">使用指南 ${icon('arrow')}</button></div></footer></div>`;
+  app.innerHTML = `${sidebar()}<div class="main-shell">${header()}<main id="main" class="main-content">${pwaBanner()}${legacyPending ? '<div class="migration-banner"><span>检测到旧版浏览器数据，可迁移到当前保存位置。</span><button class="text-button" data-action="migrate-legacy">迁移旧数据</button></div>' : ''}${ui.view === 'project' ? projectView() : ui.view === 'archive' ? archiveView() : calendarView()}</main><footer class="site-footer"><span>序日 <span class="footer-dot">·</span> 个人日程与项目管理 <span class="app-version">v${esc(appVersion)}</span></span><div class="footer-actions">${isDeviceStorage ? '<button data-action="install-pwa">安装与离线</button>' : ''}<button data-action="help">使用指南 ${icon('arrow')}</button></div></footer></div>`;
   updateSaveStatus();
   try { sessionStorage.setItem('xuri.view', JSON.stringify({ ...ui, sidebarOpen: false })); } catch { /* View preferences are optional. */ }
   if (!modal.open) {
@@ -303,17 +305,24 @@ async function readImport(file) {
 }
 function pwaBanner() {
   if (!isDeviceStorage) return '';
+  const reminder = pushStatus();
+  const pushWarning = reminder.connected && reminder.error ? `<div class="pwa-banner" role="status">提醒安排未同步：${esc(reminder.error)}</div>` : '';
   const status = pwaStatus();
   let label = status.offline ? (status.ready ? '离线模式 · 数据仍保存在此设备' : '当前离线，离线资源尚未就绪') : status.ready ? '' : '正在准备离线资源，请保持联网直至完成。';
   if (status.error) label = status.error;
-  return `${label ? `<div class="pwa-banner" role="status">${esc(label)}</div>` : ''}${status.updateAvailable ? '<div class="pwa-banner"><span>应用有新版本，已保存的数据会保留。</span><button class="text-button" data-action="update-pwa">更新应用</button></div>' : ''}`;
+  return `${pushWarning}${label ? `<div class="pwa-banner" role="status">${esc(label)}</div>` : ''}${status.updateAvailable ? '<div class="pwa-banner"><span>应用有新版本，已保存的数据会保留。</span><button class="text-button" data-action="update-pwa">更新应用</button></div>' : ''}`;
+}
+function pushDialog() {
+  const current = pushStatus();
+  const support = pushSupport();
+  showModal('系统提醒设置', '每条未完成日程：提前 2 小时、30 分钟、5 分钟各提醒一次。', `<div class="modal-body">${formError}<p class="push-state" role="status">${current.connected ? '设备已连接推送后台' : '尚未连接推送后台，系统提醒未启用'}</p><p class="field-hint">需要已部署的 HTTPS 推送后台。iPhone 需 iOS 16.4 或以上、从主屏幕打开，并允许通知。只安排尚未到时的提醒，不补发已错过的时间点。</p>${!support.supported ? `<p class="form-error">${esc(support.reason)}</p>` : ''}${current.error ? `<p class="form-error">${esc(current.error)}</p>` : ''}${current.connected ? `<p class="field-hint">后台：${esc(current.backendUrl)}<br>最近同步：${current.lastSyncedAt ? esc(new Date(current.lastSyncedAt).toLocaleString('zh-CN')) : '尚未成功'}<br>待提醒数量：${current.scheduledJobs}</p><div class="push-actions"><button class="button secondary" data-action="push-sync">同步提醒安排</button><button class="button secondary" data-action="push-test">发送测试通知</button><button class="button secondary" data-action="push-disconnect">停用并撤销后台安排</button></div>` : `<form data-form="push"><label class="field">HTTPS 后台地址<input name="backendUrl" type="url" required placeholder="https://你的后台.workers.dev" autocomplete="url"></label><label class="field">后台配对码<input name="pairingSecret" type="password" required autocomplete="off" placeholder="在你自己的后台设置的配对码"></label><button class="button primary" type="submit" ${support.supported ? '' : 'disabled'}>连接后台并启用通知</button></form>`}<p class="storage-note">仅上传通知订阅及未完成日程的名称、开始时间，用于安排提醒；不上传全部项目和备注。离线时日程仍可编辑，但新增、改期、完成或删除须联网同步后才能更新后台提醒。推送可能受网络、专注模式与系统通知设置影响。</p></div><footer class="modal-footer"><button class="button secondary" data-action="close-modal">关闭</button></footer>`, true);
 }
 function installDialog() {
   const status = pwaStatus();
-  showModal('安装与离线使用', '', `<div class="modal-body help-body"><h3>${status.standalone ? '已在独立应用模式中运行' : '在 iPhone 添加到主屏幕'}</h3><ol class="install-steps"><li>使用 Safari 打开本应用的 HTTPS 网址。</li><li>点击 Safari 的「分享」，选择「添加到主屏幕」。部分版本在「更多」中显示该选项；若有「作为 Web App 打开」，请保持启用。</li><li>名称保留为「序日」，点击「添加」。</li><li>从主屏幕打开，联网等待下方显示「离线已就绪」，再尝试飞行模式。</li></ol><p class="install-status" role="status">${status.ready ? '离线已就绪：可断网打开、修改项目和日程。' : status.error ? '离线未就绪，请联网后刷新重试。' : '离线资源准备中，请保持联网。'}</p><p class="storage-note">建议先安装再正式录入数据。Safari 标签页与主屏幕应用在部分 iOS 版本可能使用不同的存储空间；可通过 JSON 备份迁移。提醒通知、电脑与手机自动同步均未实现。</p></div><footer class="modal-footer"><button class="button primary" data-action="close-modal">关闭</button></footer>`, true);
+  showModal('安装与离线使用', '', `<div class="modal-body help-body"><h3>${status.standalone ? '已在独立应用模式中运行' : '在 iPhone 添加到主屏幕'}</h3><ol class="install-steps"><li>使用 Safari 打开本应用的 HTTPS 网址。</li><li>点击 Safari 的「分享」，选择「添加到主屏幕」。部分版本在「更多」中显示该选项；若有「作为 Web App 打开」，请保持启用。</li><li>名称保留为「序日」，点击「添加」。</li><li>从主屏幕打开，联网等待下方显示「离线已就绪」，再尝试飞行模式。</li></ol><p class="install-status" role="status">${status.ready ? '离线已就绪：可断网打开、修改项目和日程。' : status.error ? '离线未就绪，请联网后刷新重试。' : '离线资源准备中，请保持联网。'}</p><p class="storage-note">建议先安装再正式录入数据。Safari 标签页与主屏幕应用在部分 iOS 版本可能使用不同的存储空间；可通过 JSON 备份迁移。系统提醒需在「系统提醒」中连接额外推送后台并授权；未连接时不会发送。电脑与手机自动同步未实现。</p></div><footer class="modal-footer"><button class="button primary" data-action="close-modal">关闭</button></footer>`, true);
 }
 function helpDialog() {
-  showModal('使用指南', '', `<div class="modal-body help-body"><div class="help-step"><span>01</span><div><h3>项目与任务</h3><p>左侧新增项目，填写目标和截止日期。在项目详情添加任务，安排时间后显示到当天时间表。两处修改与完成状态同步；手机用左上角菜单展开项目栏。</p></div></div><div class="help-step"><span>02</span><div><h3>月历与日程</h3><p>切换年月、选择日期，下方显示时间表。日程可关联项目，也可独立存在。方框标记完成，铅笔编辑，垃圾桶删除。</p></div></div><div class="help-step"><span>03</span><div><h3>数据保存</h3><p>${isDeviceStorage ? '当前使用设备本地存储。首次联网完成离线资源准备后，断网也能打开和保存。请定期导出 JSON 备份到「文件」。清除网站数据或卸载应用可能删除记录。' : '每次修改由本机服务写入文件，请保持启动窗口运行。保存位置：' + esc(storagePath)}</p></div></div><div class="help-step"><span>04</span><div><h3>备份与设备</h3><p>「数据与备份」可导出或导入。电脑和手机的数据分别保存，尚未实现跨设备自动同步或提醒通知。iPhone 安装步骤见「安装与离线」。</p></div></div></div><footer class="modal-footer">${isDeviceStorage ? '<button class="button secondary" data-action="help-install">安装与离线</button>' : ''}<button class="button primary" data-action="close-modal">关闭</button></footer>`, true);
+  showModal('使用指南', '', `<div class="modal-body help-body"><div class="help-step"><span>01</span><div><h3>项目与任务</h3><p>左侧新增项目，填写目标和截止日期。在项目详情添加任务，安排时间后显示到当天时间表。两处修改与完成状态同步；手机用左上角菜单展开项目栏。</p></div></div><div class="help-step"><span>02</span><div><h3>月历与日程</h3><p>切换年月、选择日期，下方显示时间表。日程可关联项目，也可独立存在。方框标记完成，铅笔编辑，垃圾桶删除。</p></div></div><div class="help-step"><span>03</span><div><h3>数据保存</h3><p>${isDeviceStorage ? '当前使用设备本地存储。首次联网完成离线资源准备后，断网也能打开和保存。请定期导出 JSON 备份到「文件」。清除网站数据或卸载应用可能删除记录。' : '每次修改由本机服务写入文件，请保持启动窗口运行。保存位置：' + esc(storagePath)}</p></div></div><div class="help-step"><span>04</span><div><h3>备份与设备</h3><p>「数据与备份」可导出或导入。电脑和手机的数据分别保存，未实现自动同步。系统提醒须单独连接推送后台并授权。iPhone 安装步骤见「安装与离线」。</p></div></div></div><footer class="modal-footer">${isDeviceStorage ? '<button class="button secondary" data-action="help-install">安装与离线</button>' : ''}<button class="button primary" data-action="close-modal">关闭</button></footer>`, true);
 }
 
 document.addEventListener('click', async (event) => {
@@ -324,6 +333,10 @@ document.addEventListener('click', async (event) => {
   const item = id ? state?.items.find((i) => i.id === id) : null;
   const project = id ? projectFor(id) : null;
   switch (action) {
+    case 'push-settings': pushDialog(); break;
+    case 'push-sync': await syncPush(true); if (modal.open) { closeModal(); pushDialog(); } break;
+    case 'push-test': try { await testPush(); toast('测试通知已提交，请在 iPhone 确认是否收到。'); } catch (error) { errorMessage(error.message); } break;
+    case 'push-disconnect': try { button.disabled = true; await disconnectPush(); closeModal(); pushDialog(); toast('后台提醒已撤销'); } catch (error) { button.disabled = false; errorMessage(error.message); } break;
     case 'help-install': closeModal(); installDialog(); break;
     case 'install-pwa': installDialog(); break;
     case 'update-pwa': await requestPwaUpdate(); break;
@@ -342,6 +355,7 @@ document.addEventListener('click', async (event) => {
     case 'select-date': selectDate(date); break;
     case 'go-item-date': if (item?.date) selectDate(item.date, true); break;
     case 'today': selectDate(today); break;
+    case 'toggle-calendar': ui.calendarExpanded = !ui.calendarExpanded; render(); break;
     case 'prev-month':
     case 'next-month': {
       const d = new Date(ui.year, ui.month + (action === 'prev-month' ? -1 : 1), 1);
@@ -414,7 +428,13 @@ modal.addEventListener('submit', async (event) => {
   if (!form.reportValidity()) return;
   const data = new FormData(form);
   const id = form.dataset.id;
-  if (form.dataset.form === 'project') {
+  if (form.dataset.form === 'push') {
+    const submit = $('button[type=submit]', form);
+    submit.disabled = true;
+    try { await connectPush(data.get('backendUrl').trim(), data.get('pairingSecret')); closeModal(); pushDialog(); toast('已连接后台，日程提醒安排已同步'); }
+    catch (error) { errorMessage(error.message); }
+    finally { const secret = $('[name=pairingSecret]', form); if (secret) secret.value = ''; submit.disabled = false; }
+  } else if (form.dataset.form === 'project') {
     const project = { id: id || uid(), name: data.get('name').trim(), goal: data.get('goal').trim(), deadline: data.get('deadline') || null, color: data.get('color'), archived: id ? projectFor(id).archived : false, isDemo: false };
     if (await commit((next) => {
       if (id) next.projects[next.projects.findIndex((p) => p.id === id)] = project;
@@ -493,16 +513,20 @@ async function init() {
       if (preference && validDate(preference.selectedDate) && ['calendar', 'project', 'archive'].includes(preference.view)
         && Number.isInteger(preference.year) && preference.year >= 1900 && preference.year <= 2100
         && Number.isInteger(preference.month) && preference.month >= 0 && preference.month <= 11) {
-        ui = { ...ui, selectedDate: preference.selectedDate, year: preference.year, month: preference.month, view: preference.view, projectId: projectFor(preference.projectId)?.id || null };
+        ui = { ...ui, selectedDate: preference.selectedDate, year: preference.year, month: preference.month, calendarExpanded: preference.calendarExpanded === true, view: preference.view, projectId: projectFor(preference.projectId)?.id || null };
         if (ui.view === 'project' && !ui.projectId) ui.view = 'calendar';
       }
     } catch { /* View preferences are optional. */ }
+    const requestedDate = new URL(location.href).searchParams.get('date');
+    if (validDate(requestedDate)) { ui.view = 'calendar'; ui.selectedDate = requestedDate; ui.year = parseDate(requestedDate).getFullYear(); ui.month = parseDate(requestedDate).getMonth(); }
     render();
+    if (isDeviceStorage) void initPush(async () => (await readDisk()).state?.items || []);
     setInterval(syncDisk, 2000);
     window.addEventListener('focus', syncDisk);
     document.addEventListener('visibilitychange', syncDisk);
   } catch (error) { recoveryScreen(error.message); }
 }
+document.addEventListener('xuri:push-status', () => { if (state && !saveBusy) render(); });
 document.addEventListener('xuri:pwa-status', () => {
   if (state && !saveBusy) render();
   if (modal.open && $('.install-status', modal)) { const status = pwaStatus(); $('.install-status', modal).textContent = status.ready ? '离线已就绪：可断网打开、修改项目和日程。' : status.error ? '离线未就绪，请联网后刷新重试。' : '离线资源准备中，请保持联网。'; }

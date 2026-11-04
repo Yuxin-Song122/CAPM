@@ -33,6 +33,10 @@ jobs:
           enablement: true
       - name: Validate data model and file storage
         run: npm test
+      - name: Install isolated push backend dependencies
+        run: npm ci --prefix push-backend
+      - name: Validate push scheduling and encryption
+        run: npm run test:push-backend
       - name: Build PWA shell without personal data
         run: node scripts/build-static.mjs
       - name: Upload static site

@@ -31,6 +31,7 @@ const files = new Map([
   ['/src/model.js', ['src/model.js', 'text/javascript; charset=utf-8']],
   ['/src/storage.js', ['src/storage.js', 'text/javascript; charset=utf-8']],
   ['/src/device-store.js', ['src/device-store.js', 'text/javascript; charset=utf-8']],
+  ['/src/push-client.js', ['src/push-client.js', 'text/javascript; charset=utf-8']],
   ['/src/pwa.js', ['src/pwa.js', 'text/javascript; charset=utf-8']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],

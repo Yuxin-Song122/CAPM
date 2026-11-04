@@ -1,0 +1,20 @@
+name = "xuri-push"
+main = "src/worker.js"
+compatibility_date = "2026-11-04"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGIN = "https://yuxin-song122.github.io"
+APP_URL = "https://yuxin-song122.github.io/CAPM/"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xuri-push"
+# Replace this placeholder with the database_id returned by wrangler d1 create.
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[triggers]
+crons = ["* * * * *"]
+
+# Configure PAIRING_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT
+# with wrangler secret bulk .secrets.json; never place them in this file.

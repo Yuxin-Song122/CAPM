@@ -142,6 +142,7 @@ h1:focus { outline: none; }
 .intro-art .icon { width: 40px; height: 40px; stroke-width: .85; transform: rotate(-10deg); }
 .intro-art span { font-size: 10px; line-height: 1.9; letter-spacing: 2px; }
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 14px; }
+.overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .metric { display: flex; align-items: center; gap: 12px; padding: 10px 16px; min-height: 60px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
 .metric-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 11px; background: var(--tint); color: var(--color); }
 .metric-icon .icon { width: 20px; height: 20px; }
@@ -149,6 +150,17 @@ h1:focus { outline: none; }
 .metric-value { margin-top: 3px; font-size: 21px; font-weight: 550; color: #503e46; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .metric-value > span { font-size: 10px; color: #a3979c; font-weight: 400; margin-left: 8px; }
 .calendar-card { overflow: hidden; }
+.calendar-toggle { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; min-height: 60px; padding: 12px 18px; color: var(--ink); background: #fffafd; border: 0; text-align: left; }
+.calendar-toggle:hover { background: var(--accent-soft); }
+.calendar-toggle:focus-visible { outline-offset: -3px; }
+.calendar-toggle[aria-expanded="true"] { border-bottom: 1px solid var(--line); }
+.calendar-toggle-title { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; font-size: 14px; font-weight: 550; }
+.calendar-toggle-title > .icon { width: 18px; height: 18px; color: var(--accent); }
+.calendar-selection { color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.6; overflow-wrap: anywhere; }
+.calendar-toggle-action { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--accent-dark); }
+.calendar-toggle-label { font-size: 12px; }
+.calendar-toggle-action > .icon { width: 16px; height: 16px; transform: rotate(90deg); transition: transform .18s; }
+.calendar-toggle[aria-expanded="true"] .calendar-toggle-action > .icon { transform: rotate(-90deg); }
 .calendar-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 9px 18px; min-height: 48px; gap: 12px; }
 .month-picker { display: flex; gap: 3px; align-items: center; }
 .month-picker select { padding: 3px 0; border: none; cursor: pointer; color: #58464d; background: transparent; font-size: 17px; font-weight: 550; outline-offset: 3px; }
@@ -613,7 +625,9 @@ html { min-height: 100%; -webkit-text-size-adjust: 100%; }
 body { min-height: 100vh; min-height: 100dvh; }
 body.project-menu-open { overflow: hidden; }
 .main-shell { min-height: 100dvh; }
-.sidebar { padding-top: max(30px, env(safe-area-inset-top)); padding-bottom: env(safe-area-inset-bottom); }
+.topbar { height: auto; min-height: calc(76px + env(safe-area-inset-top)); padding-top: calc(env(safe-area-inset-top) + 14px); padding-bottom: 12px; }
+.main-content { padding-top: 20px; }
+.sidebar { padding-top: calc(env(safe-area-inset-top) + 30px); padding-bottom: env(safe-area-inset-bottom); }
 .site-footer { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 .drawer-close { display: none; }
 .install-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -622,6 +636,7 @@ body.project-menu-open { overflow: hidden; }
 .pwa-install-steps li + li { margin-top: 10px; }
 .pwa-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f9edf3; font-size: 12px; line-height: 1.7; }
 .footer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.app-version { margin-left: 5px; font-variant-numeric: tabular-nums; }
 .install-steps { margin: 14px 0; padding-left: 22px; font-size: 13px; line-height: 1.9; }
 .install-steps li + li { margin-top: 9px; }
 .install-status { padding: 12px 14px; background: #f9edf3; border-radius: 7px; font-size: 12px; line-height: 1.8; }
@@ -629,10 +644,10 @@ body.project-menu-open { overflow: hidden; }
 .modal-header { position: sticky; top: 0; z-index: 2; background: #fffdfd; }
 .modal-footer { position: sticky; bottom: 0; z-index: 2; }
 @media (max-width: 680px), (max-width: 1024px) and (pointer: coarse) {
-  .sidebar { width: min(300px, calc(100vw - 48px)); padding-top: max(22px, env(safe-area-inset-top)); visibility: hidden; overscroll-behavior: contain; }
+  .sidebar { width: min(300px, calc(100vw - 48px)); padding-top: calc(env(safe-area-inset-top) + 30px); padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); visibility: hidden; overscroll-behavior: contain; }
   .sidebar.is-open { visibility: visible; }
   .sidebar .brand { padding-right: 40px; }
-  .drawer-close { display: inline-flex; position: absolute; right: 10px; top: max(13px, env(safe-area-inset-top)); }
+  .drawer-close { display: inline-flex; position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(env(safe-area-inset-top) + 16px); }
   .sidebar .workspace-label { margin-top: 23px; margin-bottom: 15px; }
   .sidebar-heading { margin-top: 21px; margin-bottom: 7px; font-size: 12px; }
   .sidebar .project-nav { max-height: none; flex-shrink: 1; min-height: 44px; }
@@ -644,7 +659,7 @@ body.project-menu-open { overflow: hidden; }
   .sidebar-bottom { padding-top: 16px; }
   .sidebar-empty { font-size: 12px; }
   .main-shell { margin-left: 0; }
-  .topbar { height: auto; min-height: 60px; padding-top: env(safe-area-inset-top); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .topbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   .main-content { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
   .site-footer { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(16px, env(safe-area-inset-bottom)); font-size: 10px; flex-wrap: wrap; }
   .site-footer button { font-size: 12px; min-height: 44px; }
@@ -655,6 +670,10 @@ body.project-menu-open { overflow: hidden; }
   .breadcrumb { gap: 4px; }
   .breadcrumb strong { font-size: 12px; }
   .topbar-actions { gap: 4px; }
+  .calendar-toggle { min-height: 68px; padding: 10px 12px; gap: 8px; }
+  .calendar-toggle-title { column-gap: 6px; row-gap: 1px; }
+  .calendar-selection { flex-basis: 100%; padding-left: 24px; font-size: 11px; }
+  .calendar-toggle-action { gap: 4px; }
   .calendar-toolbar { padding: 2px 8px; flex-wrap: wrap; column-gap: 4px; }
   .month-picker { flex-shrink: 0; }
   .month-picker select { font-size: 16px; min-height: 44px; }
@@ -710,3 +729,6 @@ body.project-menu-open { overflow: hidden; }
   .task-tabs { gap: 11px; padding-left: 11px; padding-right: 11px; }
   .item-title { font-size: 12px; }
 }
+
+.push-actions { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+.push-state { color:var(--accent); line-height:1.8; margin-bottom:12px; }

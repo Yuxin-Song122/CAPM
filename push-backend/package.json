@@ -1,0 +1,21 @@
+{
+  "name": "xuri-push-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute xuri-push --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute xuri-push --remote --file=schema.sql",
+    "generate-secrets": "node scripts/generate-secrets.mjs",
+    "test": "node ../tests/push-backend.test.mjs"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "2.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.157.0"
+  }
+}

@@ -8,7 +8,7 @@ const root = new URL('../', import.meta.url);
 const output = new URL('../dist/', import.meta.url);
 const assets = [
   'index.html', 'styles.css', 'favicon.svg', 'manifest.webmanifest', 'sw.js',
-  'src/app.js', 'src/model.js', 'src/storage.js', 'src/device-store.js', 'src/pwa.js',
+  'src/app.js', 'src/push-client.js', 'src/model.js', 'src/storage.js', 'src/device-store.js', 'src/pwa.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png',
 ];
