@@ -1,6 +1,6 @@
 export const STORAGE_KEY = 'xuri.planner.v1';
 export const COLORS = ['sage', 'clay', 'blue', 'lavender', 'gold'];
-export const COLOR_LABELS = { sage: '松绿', clay: '陶橙', blue: '雾蓝', lavender: '浅紫', gold: '麦黄' };
+export const COLOR_LABELS = { sage: '柔粉', clay: '陶橙', blue: '雾蓝', lavender: '浅紫', gold: '麦黄' };
 
 export function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;

@@ -26,7 +26,10 @@ def run():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    server = subprocess.Popen(["node", "server.mjs", "--port", str(port)], cwd=ROOT, stdout=subprocess.DEVNULL)
+    data_temporary = tempfile.TemporaryDirectory(prefix="xuri-data-")
+    data_dir = Path(data_temporary.name) / "datejob"
+    command = ["node", "server.mjs", "--port", str(port), "--data-dir", str(data_dir)]
+    server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{port}"
     try:
         for _ in range(60):
@@ -51,11 +54,18 @@ def run():
             errors = []
             page = context.pages[0]
             page.on("pageerror", lambda error: errors.append(str(error)))
+            seed = subprocess.check_output(["node", "--input-type=module", "-e", "import {createExamples} from './src/model.js'; console.log(JSON.stringify(createExamples()));"], cwd=ROOT, text=True)
+            page.add_init_script("localStorage.setItem('xuri.planner.v1', " + json.dumps(seed) + ");")
             page.goto(base)
-            expect(page.get_by_role("heading", level=1)).to_contain_text("给每一天")
+            expect(page.get_by_role("heading", level=1)).to_contain_text("日历计划")
+            check(json.loads((data_dir / 'data.json').read_text(encoding='utf-8')) == json.loads(seed), "旧版浏览器数据未自动写入文件")
+            page.set_viewport_size({"width": 1366, "height": 768})
+            check(page.locator('.schedule-row').first.bounding_box()['y'] < 738, "月历与当天首条日程应在 768px 高屏幕同时可见")
+            check(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()") == '#a85575', "应使用淡粉主题")
+            page.set_viewport_size({"width": 1440, "height": 1000})
             page.screenshot(path=str(RESULTS / "01-calendar.png"), full_page=True)
             modal = page.locator("#modal")
-            stored = lambda: page.evaluate("key => JSON.parse(localStorage.getItem(key))", KEY)
+            stored = lambda: json.loads((data_dir / "data.json").read_text(encoding="utf-8"))
 
             # 1. 创建和编辑项目；清除示例不会影响自己创建的项目。
             page.get_by_role("button", name="新增项目", exact=True).click()
@@ -161,14 +171,20 @@ def run():
             page.reload()
             expect(page.get_by_role("checkbox", name="完成：首页设计与排版", exact=True)).to_be_checked()
             check(stored() == before_reload, "刷新后数据变化")
+            page.evaluate("localStorage.clear(); sessionStorage.clear()")
             context.close()
+            server.terminate()
+            server.wait(timeout=10)
+            server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL)
             context = p.chromium.launch_persistent_context(profile, **options)
             context.set_default_timeout(8000)
             page = context.pages[0]
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.goto(base)
             modal = page.locator("#modal")
-            check(stored() == before_reload, "浏览器重开后数据变化")
+            expect(page.get_by_role("heading", level=1)).to_contain_text("日历计划")
+            check(stored() == before_reload, "清空浏览器存储并重启服务后数据变化")
+            check((data_dir / "data.previous.json").is_file(), "缺少上一版文件备份")
             page.locator('[data-action="next-month"]').click()
             page.locator('[data-action="prev-month"]').click()
             page.get_by_role("combobox", name="年份", exact=True).select_option("2027")
@@ -176,7 +192,7 @@ def run():
             page.locator('[data-date="2027-01-16"]').click()
             expect(page.get_by_role("checkbox", name="完成：首页设计与排版", exact=True)).to_be_checked()
             expect(page.locator(".schedule-row")).to_contain_text(["首页设计与排版", "傍晚散步"])
-            print("PASS 刷新及彻底关闭、重新打开浏览器后数据保留")
+            print("PASS 刷新、清空浏览器存储、关闭重开浏览器及重启 Node 服务后文件数据保留")
 
             # 6. 归档与恢复，日历保留任务；导出、无效导入、替换和幂等合并。
             page.locator(".project-nav-item").filter(has_text="我的作品集项目").click()
@@ -203,14 +219,17 @@ def run():
             expect(modal.locator('#import-preview')).to_be_visible()
             modal.locator('[name="import-mode"][value="replace"]').check()
             modal.get_by_role("button", name="确认导入", exact=True).click()
+            expect(modal).not_to_be_visible()
             check(stored()["items"] == [], "替换导入未清空旧数据")
             page.locator('[data-action="backup"]').click()
             modal.locator('#import-file').set_input_files(str(backup_path))
             modal.get_by_role("button", name="确认导入", exact=True).click()
+            expect(modal).not_to_be_visible()
             check(stored() == before_import, "备份还原后内容或完成状态不一致")
             page.locator('[data-action="backup"]').click()
             modal.locator('#import-file').set_input_files(str(backup_path))
             modal.get_by_role("button", name="确认导入", exact=True).click()
+            expect(modal).not_to_be_visible()
             check(stored() == before_import, "重复合并导入产生了重复任务")
             print("PASS 归档恢复与完整备份导出、校验、替换、合并还原")
 
@@ -247,12 +266,41 @@ def run():
             page.get_by_role("button", name="打开项目栏", exact=True).click()
             page.locator(".project-nav-item").filter(has_text="我的作品集项目").click()
             check(not page.evaluate("document.documentElement.scrollWidth > innerWidth"), "手机项目页存在横向溢出")
+            page.get_by_role("button", name="新建日程", exact=True).click()
+            modal.locator('[name="title"]').fill("保存失败不能丢失输入")
+            before_failure = stored()
+            (data_dir / "data.previous.json").unlink()
+            (data_dir / "data.previous.json").mkdir()
+            modal.get_by_role("button", name="添加日程", exact=True).click()
+            expect(modal.locator("#form-error")).to_contain_text("本次修改未保存")
+            expect(modal.locator('[name="title"]')).to_have_value("保存失败不能丢失输入")
+            check(stored() == before_failure, "写盘失败覆盖了旧文件")
+            (data_dir / "data.previous.json").rmdir()
+            modal.get_by_role("button", name="添加日程", exact=True).click()
+            expect(modal).not_to_be_visible()
+            check(any(i["title"] == "保存失败不能丢失输入" for i in stored()["items"]), "恢复写入后未保存")
+            print("PASS 写入失败保留旧文件与表单输入，恢复后可重新保存")
+            legacy = {"version": 1, "projects": [{"id": "legacy-project", "name": "待迁移的旧项目", "goal": "", "deadline": None, "color": "sage", "archived": False}], "items": [{"id": "legacy-task", "title": "待迁移的旧任务", "notes": "", "projectId": "legacy-project", "date": "2027-01-16", "start": "19:00", "end": "20:00", "completed": True}]}
+            before_migration = stored()
+            page.evaluate("value => { localStorage.setItem('xuri.planner.v1', JSON.stringify(value)); localStorage.removeItem('xuri.disk-migration.v1'); }", legacy)
+            page.reload()
+            expect(page.locator('.migration-banner')).to_be_visible()
+            check(stored() == before_migration, "已有文件时不能自动覆盖为旧浏览器数据")
+            page.get_by_role("button", name="迁移旧数据", exact=True).click()
+            modal.get_by_role("button", name="确认迁移", exact=True).click()
+            expect(modal).not_to_be_visible()
+            check(len(stored()["items"]) == len(before_migration["items"]) + 1, "手动迁移未合并旧任务")
+            check(next(i for i in stored()["items"] if i["id"] == "legacy-task")["completed"], "旧任务的完成状态丢失")
+            denied = page.request.get(base + '/api/state', headers={"Origin": "https://example.invalid"})
+            check(denied.status == 403, "外部网站不应读取本机数据 API")
+            print("PASS 已有文件时确认合并旧数据，保留现有记录与完成状态；拒绝外部网站读取")
             check(not errors, f"浏览器脚本错误：{errors}")
             print("PASS 多标签同步、390px 手机布局与键盘操作；无浏览器脚本错误")
             context.close()
     finally:
         server.terminate()
         server.wait(timeout=10)
+        data_temporary.cleanup()
 
 
 if __name__ == "__main__":
