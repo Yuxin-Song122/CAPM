@@ -30,7 +30,9 @@ def run():
      if req.method=='OPTIONS':req_route.fulfill(status=204,headers=headers);return
      body=req.post_data_json if req.post_data else None;requests.append({'path':path,'method':req.method,'body':body})
      if path=='/config':value={'vapidPublicKey':key,'offsetsMinutes':[120,30,5]}
-     elif path=='/devices' and req.method=='POST':value={'deviceId':'synthetic-device','deviceToken':'synthetic-token'}
+     elif path=='/devices' and req.method=='POST':
+      assert body['pairingSecret']=='synthetic-pairing-secret'
+      value={'deviceId':'synthetic-device','deviceToken':'synthetic-token'}
      elif path=='/devices' and req.method=='DELETE':req_route.fulfill(status=204,headers=headers);return
      elif path=='/schedule':value={'scheduledJobs':3*len(body['items']),'items':len(body['items'])}
      elif path=='/test':value={'accepted':True}
@@ -49,8 +51,9 @@ def run():
     modal.get_by_role('button',name='添加日程',exact=True).click();expect(modal).not_to_be_visible()
     menu(page).locator('[data-action=push-settings]').click()
     expect(modal).to_contain_text('系统提醒未启用')
+    expect(modal.locator('[name=backendUrl]')).to_have_value('https://xuri-push.2832667234.workers.dev')
     modal.locator('[name=backendUrl]').fill('https://push.example.test')
-    modal.locator('[name=pairingSecret]').fill('synthetic-pairing-secret')
+    modal.locator('[name=pairingSecret]').fill('  synthetic-pairing-secret  ')
     modal.get_by_role('button',name='连接后台并启用通知',exact=True).click()
     expect(modal).to_contain_text('设备已连接推送后台')
     expect(modal).to_contain_text('待提醒数量：3')

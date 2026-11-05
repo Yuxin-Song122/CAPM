@@ -1,4 +1,5 @@
 // Notification settings are separate from project/calendar data and its backups.
+export const DEFAULT_PUSH_BACKEND_URL = 'https://xuri-push.2832667234.workers.dev';
 const DB_NAME = 'xuri-push-settings-v1';
 let settings = null;
 let getItems = () => [];
@@ -166,7 +167,7 @@ export async function connectPush(url, pairingSecret) {
   if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: expectedKey });
   let registered;
   try {
-    registered = await api(backendUrl, '/devices', { method: 'POST', body: { pairingSecret, subscription: subscription.toJSON() } });
+    registered = await api(backendUrl, '/devices', { method: 'POST', body: { pairingSecret: pairingSecret.trim(), subscription: subscription.toJSON() } });
     if (!registered?.deviceToken) throw new Error('后台没有返回设备凭证，连接失败。');
     const next = { backendUrl, deviceToken: registered.deviceToken, deviceId: registered.deviceId, lastSyncedAt: null, scheduledJobs: 0 };
     const saved = await updateConnection(null, next);

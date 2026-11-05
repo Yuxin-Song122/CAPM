@@ -5,13 +5,13 @@ import {
 } from './model.js';
 import { readDisk, writeDisk, isDeviceStorage } from './storage.js';
 import { pwaStatus, requestPwaUpdate } from './pwa.js';
-import { initPush, pushStatus, pushSupport, connectPush, disconnectPush, syncPush, testPush } from './push-client.js';
+import { initPush, pushStatus, pushSupport, connectPush, disconnectPush, syncPush, testPush, DEFAULT_PUSH_BACKEND_URL } from './push-client.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app');
 const modal = $('#modal');
 const today = localDate();
-const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.2.1';
+const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.2.2';
 const savedLabel = () => isDeviceStorage ? '已保存到此设备' : '已保存到文件';
 const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const paths = {
@@ -315,7 +315,7 @@ function pwaBanner() {
 function pushDialog() {
   const current = pushStatus();
   const support = pushSupport();
-  showModal('系统提醒设置', '每条未完成日程：提前 2 小时、30 分钟、5 分钟各提醒一次。', `<div class="modal-body">${formError}<p class="push-state" role="status">${current.connected ? '设备已连接推送后台' : '尚未连接推送后台，系统提醒未启用'}</p><p class="field-hint">需要已部署的 HTTPS 推送后台。iPhone 需 iOS 16.4 或以上、从主屏幕打开，并允许通知。只安排尚未到时的提醒，不补发已错过的时间点。</p>${!support.supported ? `<p class="form-error">${esc(support.reason)}</p>` : ''}${current.error ? `<p class="form-error">${esc(current.error)}</p>` : ''}${current.connected ? `<p class="field-hint">后台：${esc(current.backendUrl)}<br>最近同步：${current.lastSyncedAt ? esc(new Date(current.lastSyncedAt).toLocaleString('zh-CN')) : '尚未成功'}<br>待提醒数量：${current.scheduledJobs}</p><div class="push-actions"><button class="button secondary" data-action="push-sync">同步提醒安排</button><button class="button secondary" data-action="push-test">发送测试通知</button><button class="button secondary" data-action="push-disconnect">停用并撤销后台安排</button></div>` : `<form data-form="push"><label class="field">HTTPS 后台地址<input name="backendUrl" type="url" required placeholder="https://你的后台.workers.dev" autocomplete="url"></label><label class="field">后台配对码<input name="pairingSecret" type="password" required autocomplete="off" placeholder="在你自己的后台设置的配对码"></label><button class="button primary" type="submit" ${support.supported ? '' : 'disabled'}>连接后台并启用通知</button></form>`}<p class="storage-note">仅上传通知订阅及未完成日程的名称、开始时间，用于安排提醒；不上传全部项目和备注。离线时日程仍可编辑，但新增、改期、完成或删除须联网同步后才能更新后台提醒。推送可能受网络、专注模式与系统通知设置影响。</p></div><footer class="modal-footer"><button class="button secondary" data-action="close-modal">关闭</button></footer>`, true);
+  showModal('系统提醒设置', '每条未完成日程：提前 2 小时、30 分钟、5 分钟各提醒一次。', `<div class="modal-body">${formError}<p class="push-state" role="status">${current.connected ? '设备已连接推送后台' : '尚未连接推送后台，系统提醒未启用'}</p><p class="field-hint">需要已部署的 HTTPS 推送后台。iPhone 需 iOS 16.4 或以上、从主屏幕打开，并允许通知。只安排尚未到时的提醒，不补发已错过的时间点。</p>${!support.supported ? `<p class="form-error">${esc(support.reason)}</p>` : ''}${current.error ? `<p class="form-error">${esc(current.error)}</p>` : ''}${current.connected ? `<p class="field-hint">后台：${esc(current.backendUrl)}<br>最近同步：${current.lastSyncedAt ? esc(new Date(current.lastSyncedAt).toLocaleString('zh-CN')) : '尚未成功'}<br>待提醒数量：${current.scheduledJobs}</p><div class="push-actions"><button class="button secondary" data-action="push-sync">同步提醒安排</button><button class="button secondary" data-action="push-test">发送测试通知</button><button class="button secondary" data-action="push-disconnect">停用并撤销后台安排</button></div>` : `<form data-form="push"><label class="field">HTTPS 后台地址<input name="backendUrl" type="url" required value="${esc(DEFAULT_PUSH_BACKEND_URL)}" placeholder="https://你的后台.workers.dev" autocomplete="url"></label><label class="field">后台配对码<input name="pairingSecret" type="password" required autocomplete="off" placeholder="在你自己的后台设置的配对码"></label><button class="button primary" type="submit" ${support.supported ? '' : 'disabled'}>连接后台并启用通知</button></form>`}<p class="storage-note">仅上传通知订阅及未完成日程的名称、开始时间，用于安排提醒；不上传全部项目和备注。离线时日程仍可编辑，但新增、改期、完成或删除须联网同步后才能更新后台提醒。推送可能受网络、专注模式与系统通知设置影响。</p></div><footer class="modal-footer"><button class="button secondary" data-action="close-modal">关闭</button></footer>`, true);
 }
 function installDialog() {
   const status = pwaStatus();

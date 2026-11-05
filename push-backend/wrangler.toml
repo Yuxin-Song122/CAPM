@@ -11,7 +11,7 @@ APP_URL = "https://yuxin-song122.github.io/CAPM/"
 binding = "DB"
 database_name = "xuri-push"
 # Replace this placeholder with the database_id returned by wrangler d1 create.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "bb3d6b07-2d26-4dba-a011-6b6ba805acf9"
 
 [triggers]
 crons = ["* * * * *"]

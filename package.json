@@ -1,6 +1,6 @@
 {
   "name": "xuri-planner",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "type": "module",
   "description": "序日：支持 iPhone 主屏幕安装与离线使用的日程和项目管理 PWA",

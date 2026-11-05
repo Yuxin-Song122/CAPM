@@ -28,6 +28,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
 def run():
+    expected_version=json.loads((ROOT/'package.json').read_text())['version']
     subprocess.run(['node','scripts/build-static.mjs'],cwd=ROOT,check=True)
     with tempfile.TemporaryDirectory(prefix='xuri-upgrade-') as temporary:
         temp=Path(temporary); old=temp/'old'; old.mkdir()
@@ -84,7 +85,7 @@ def run():
                 page.evaluate("async()=>{ const r=await navigator.serviceWorker.getRegistration();await r.update(); }")
                 expect(page.get_by_role('button',name='更新应用',exact=True)).to_be_visible(timeout=20000)
                 page.get_by_role('button',name='更新应用',exact=True).click()
-                page.wait_for_function("document.querySelector('meta[name=\"xuri-release\"]')?.content==='1.2.1'",timeout=20000)
+                page.wait_for_function("version => document.querySelector('meta[name=\"xuri-release\"]')?.content === version", arg=expected_version, timeout=20000)
                 expect(page.locator('#calendar-content')).to_be_hidden()
                 expect(page.locator('.overview-metrics .metric')).to_have_count(2)
                 expect(page.get_by_text('进行中的项目',exact=True)).to_have_count(0)
@@ -111,7 +112,7 @@ def run():
                 assert page.evaluate(READ_ALL)==before,'新版离线重开后原始数据变化'
                 assert page.evaluate('caches.keys()')!=old_caches,'未切换到新版缓存'
                 (ROOT/'test-results').mkdir(exist_ok=True)
-                page.screenshot(path=str(ROOT/'test-results'/'v1.2.1-upgrade-preserved.png'),full_page=True)
+                page.screenshot(path=str(ROOT/'test-results'/f'v{expected_version}-upgrade-preserved.png'),full_page=True)
                 assert not errors,errors
                 context.close()
                 print('PASS 旧版实际 Service Worker 更新→新版，IndexedDB 全部记录和 revision 逐项相同')
