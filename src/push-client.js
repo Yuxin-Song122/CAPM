@@ -82,22 +82,61 @@ function endpoint(value) {
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || (url.port && url.port !== '443')) throw new Error('后台地址须为 HTTPS，且不包含账号、查询参数或其他端口。');
   return url.href.replace(/\/$/, '');
 }
+const stages = { '/health': '检查后台状态', '/config': '读取推送配置', '/devices': '登记设备', '/schedule': '同步提醒安排', '/test': '发送测试通知' };
+function apiError(message, details) {
+  return Object.assign(new Error(message), details);
+}
 async function api(base, route, { token, method = 'GET', body } = {}) {
+  const stage = method === 'DELETE' ? '撤销设备连接' : stages[route] || '访问推送后台';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(base + route, { method, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: controller.signal, cache: 'no-store' });
-    const value = response.status === 204 ? null : await response.json();
-    if (!response.ok) { const error = new Error(value?.error || (response.status === 401 ? '后台认证失效，请重新连接。' : `推送后台返回错误 ${response.status}`)); error.stale = value?.stale === true; error.status = response.status; throw error; }
+    let value = null;
+    if (response.status !== 204) {
+      try { value = await response.json(); }
+      catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        throw apiError(`${stage}失败：后台返回的不是有效 JSON（HTTP ${response.status}）。请检查后台地址或网络拦截页面。`, { kind: 'response', status: response.status });
+      }
+    }
+    if (!response.ok) {
+      const message = typeof value?.error === 'string' ? value.error : response.status === 503 ? '提醒服务尚未就绪，请检查后台配置。' : response.status === 401 ? '后台认证失效，请重新连接。' : `推送后台返回错误 HTTP ${response.status}`;
+      throw apiError(`${stage}失败：${message}`, { kind: 'http', stale: value?.stale === true, status: response.status });
+    }
     return value;
   } catch (error) {
-    if (error instanceof TypeError || error.name === 'AbortError') throw new Error('无法连接推送后台，请检查网络、HTTPS 地址和后台允许的网站来源。');
+    if (error.name === 'AbortError') throw apiError(`${stage}超时：15 秒内未收到后台响应。可切换 Wi-Fi／蜂窝网络后重试。`, { kind: 'timeout' });
+    if (error instanceof TypeError) throw apiError(`${stage}失败：浏览器无法访问 ${base}。可能是网络、HTTPS 或网站来源限制，尚不能确定具体原因。`, { kind: 'network' });
     throw error;
   } finally { clearTimeout(timeout); }
 }
 function keyBytes(value) {
   const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '='));
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+export async function checkPushBackend(url) {
+  const backendUrl = endpoint(url);
+  // Public read-only endpoints only: no notification permission, pairing secret,
+  // subscription, device token, planner data or storage writes are involved.
+  const checks = await Promise.all(['health', 'config'].map(async (name) => {
+    try {
+      const value = await api(backendUrl, `/${name}`);
+      if (name === 'health') {
+        if (value?.ok !== true || value?.configured !== true) throw new Error('后台可以访问，但提醒服务尚未就绪。');
+        return { name, ok: true, message: '后台状态：可访问，服务已就绪。' };
+      }
+      const key = typeof value?.vapidPublicKey === 'string' && /^[A-Za-z0-9_-]{87}$/.test(value.vapidPublicKey) ? keyBytes(value.vapidPublicKey) : null;
+      if (key?.length !== 65 || key[0] !== 4) throw new Error('后台可以访问，但推送公钥配置无效。');
+      return { name, ok: true, message: '推送配置：已读取。' };
+    } catch (error) { return { name, ok: false, message: error.message }; }
+  }));
+  return {
+    backendUrl, checkedAt: new Date().toISOString(), origin: location.origin,
+    standalone: Boolean(navigator.standalone || matchMedia('(display-mode: standalone)').matches),
+    notificationPermission: 'Notification' in globalThis ? Notification.permission : 'unsupported',
+    checks, ok: checks.every((check) => check.ok),
+  };
 }
 async function payload() {
   return (await getItems()).filter((item) => item.date && !item.completed).map((item) => ({ id: item.id, title: item.title, startAt: new Date(`${item.date}T${item.start}:00`).toISOString() })).filter((item) => Date.parse(item.startAt) > Date.now()).sort((a, b) => a.id.localeCompare(b.id));

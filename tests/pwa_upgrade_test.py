@@ -33,7 +33,7 @@ def run():
     with tempfile.TemporaryDirectory(prefix='xuri-upgrade-') as temporary:
         temp=Path(temporary); old=temp/'old'; old.mkdir()
         # The known release used by the user's existing installation.
-        archive=subprocess.check_output(['git','archive','44fdfb5'],cwd=ROOT)
+        archive=subprocess.check_output(['git','archive','79659be45708d6abb720922490c14ebcbd61bef3'],cwd=ROOT)
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar: tar.extractall(old, filter='data')
         subprocess.run(['node','scripts/build-static.mjs'],cwd=old,check=True,stdout=subprocess.DEVNULL)
         serve=temp/'web';serve.mkdir();public=serve/'CAPM';shutil.copytree(old/'dist',public)

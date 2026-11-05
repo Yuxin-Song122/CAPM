@@ -732,3 +732,6 @@ body.project-menu-open { overflow: hidden; }
 
 .push-actions { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
 .push-state { color:var(--accent); line-height:1.8; margin-bottom:12px; }
+.push-check { margin-top:20px; padding-top:18px; border-top:1px solid var(--line); }
+.push-check .field-hint { margin:10px 0; }
+.push-diagnostics { white-space:pre-line; overflow-wrap:anywhere; font-size:12px; line-height:1.9; padding:12px; border-radius:8px; background:var(--canvas); color:var(--text); }

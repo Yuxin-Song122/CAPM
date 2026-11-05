@@ -5,13 +5,13 @@ import {
 } from './model.js';
 import { readDisk, writeDisk, isDeviceStorage } from './storage.js';
 import { pwaStatus, requestPwaUpdate } from './pwa.js';
-import { initPush, pushStatus, pushSupport, connectPush, disconnectPush, syncPush, testPush, DEFAULT_PUSH_BACKEND_URL } from './push-client.js';
+import { initPush, pushStatus, pushSupport, connectPush, disconnectPush, syncPush, testPush, checkPushBackend, DEFAULT_PUSH_BACKEND_URL } from './push-client.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app');
 const modal = $('#modal');
 const today = localDate();
-const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.2.2';
+const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.2.3';
 const savedLabel = () => isDeviceStorage ? '已保存到此设备' : '已保存到文件';
 const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const paths = {
@@ -58,6 +58,7 @@ let saveBusy = false;
 let saveStatus = 'saved';
 let syncBusy = false;
 let legacyPending = false;
+let pushDiagnosticRun = 0;
 let ui = { view: 'calendar', selectedDate: today, year: parseDate(today).getFullYear(), month: parseDate(today).getMonth(), projectId: null, filter: 'all', sidebarOpen: false, calendarExpanded: false };
 
 function toast(message) {
@@ -120,6 +121,7 @@ function touchProject(next, projectId) {
   if (project) project.isDemo = false;
 }
 function showModal(title, subtitle, body, wide = false) {
+  pushDiagnosticRun++;
   pendingImport = null;
   modal.className = wide ? 'modal wide' : 'modal';
   modal.innerHTML = `<header class="modal-header"><div><h2 id="modal-title">${esc(title)}</h2>${subtitle ? `<p>${esc(subtitle)}</p>` : ''}</div><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭弹窗">${icon('close')}</button></header>${body}`;
@@ -128,6 +130,7 @@ function showModal(title, subtitle, body, wide = false) {
   if (field) field.focus();
 }
 function closeModal() {
+  pushDiagnosticRun++;
   modal.close();
   pendingImport = null;
 }
@@ -315,7 +318,37 @@ function pwaBanner() {
 function pushDialog() {
   const current = pushStatus();
   const support = pushSupport();
-  showModal('系统提醒设置', '每条未完成日程：提前 2 小时、30 分钟、5 分钟各提醒一次。', `<div class="modal-body">${formError}<p class="push-state" role="status">${current.connected ? '设备已连接推送后台' : '尚未连接推送后台，系统提醒未启用'}</p><p class="field-hint">需要已部署的 HTTPS 推送后台。iPhone 需 iOS 16.4 或以上、从主屏幕打开，并允许通知。只安排尚未到时的提醒，不补发已错过的时间点。</p>${!support.supported ? `<p class="form-error">${esc(support.reason)}</p>` : ''}${current.error ? `<p class="form-error">${esc(current.error)}</p>` : ''}${current.connected ? `<p class="field-hint">后台：${esc(current.backendUrl)}<br>最近同步：${current.lastSyncedAt ? esc(new Date(current.lastSyncedAt).toLocaleString('zh-CN')) : '尚未成功'}<br>待提醒数量：${current.scheduledJobs}</p><div class="push-actions"><button class="button secondary" data-action="push-sync">同步提醒安排</button><button class="button secondary" data-action="push-test">发送测试通知</button><button class="button secondary" data-action="push-disconnect">停用并撤销后台安排</button></div>` : `<form data-form="push"><label class="field">HTTPS 后台地址<input name="backendUrl" type="url" required value="${esc(DEFAULT_PUSH_BACKEND_URL)}" placeholder="https://你的后台.workers.dev" autocomplete="url"></label><label class="field">后台配对码<input name="pairingSecret" type="password" required autocomplete="off" placeholder="在你自己的后台设置的配对码"></label><button class="button primary" type="submit" ${support.supported ? '' : 'disabled'}>连接后台并启用通知</button></form>`}<p class="storage-note">仅上传通知订阅及未完成日程的名称、开始时间，用于安排提醒；不上传全部项目和备注。离线时日程仍可编辑，但新增、改期、完成或删除须联网同步后才能更新后台提醒。推送可能受网络、专注模式与系统通知设置影响。</p></div><footer class="modal-footer"><button class="button secondary" data-action="close-modal">关闭</button></footer>`, true);
+  const connection = current.connected
+    ? `<p class="field-hint">后台：${esc(current.backendUrl)}<br>最近同步：${current.lastSyncedAt ? esc(new Date(current.lastSyncedAt).toLocaleString('zh-CN')) : '尚未成功'}<br>待提醒数量：${current.scheduledJobs}</p><div class="push-actions"><button class="button secondary" data-action="push-sync">同步提醒安排</button><button class="button secondary" data-action="push-test">发送测试通知</button><button class="button secondary" data-action="push-disconnect">停用并撤销后台安排</button></div>`
+    : `<form data-form="push"><label class="field">HTTPS 后台地址<input name="backendUrl" type="url" required value="${esc(DEFAULT_PUSH_BACKEND_URL)}" placeholder="https://你的后台.workers.dev" autocomplete="url"></label><label class="field">后台配对码<input name="pairingSecret" type="password" required autocomplete="off" placeholder="在你自己的后台设置的配对码"></label><button class="button primary" type="submit" ${support.supported ? '' : 'disabled'}>连接后台并启用通知</button></form>`;
+  showModal('系统提醒设置', '每条未完成日程：提前 2 小时、30 分钟、5 分钟各提醒一次。', `<div class="modal-body">${formError}<p class="push-state" role="status">${current.connected ? '设备已连接推送后台' : '尚未连接推送后台，系统提醒未启用'}</p><p class="field-hint">iPhone 需 iOS 16.4 或以上、从主屏幕打开，并允许通知。只安排尚未到时的提醒，不补发已错过的时间点。</p>${!support.supported ? `<p class="form-error">${esc(support.reason)}</p>` : ''}${current.error ? `<p class="form-error">${esc(current.error)}</p>` : ''}${connection}<section class="push-check"><button type="button" class="button secondary" data-action="push-check">检查后台连接</button><p class="field-hint">无需配对码，也可在 Safari 中检查。仅检查服务状态，不会上传项目或日程。</p><p id="push-diagnostics" class="push-diagnostics" role="status" aria-live="polite" hidden></p></section><p class="storage-note">仅上传通知订阅及未完成日程的名称、开始时间，用于安排提醒；不上传全部项目和备注。离线时日程仍可编辑，但新增、改期、完成或删除须联网同步后才能更新后台提醒。推送可能受网络、专注模式与系统通知设置影响。</p></div><footer class="modal-footer"><button class="button secondary" data-action="close-modal">关闭</button></footer>`, true);
+}
+async function checkPushConnection(button) {
+  const input = $('[name=backendUrl]', modal);
+  const backendUrl = input ? input.value.trim() : pushStatus().backendUrl;
+  const output = $('#push-diagnostics', modal);
+  const submit = $('form[data-form=push] button[type=submit]', modal);
+  const wasDisabled = submit?.disabled;
+  const run = ++pushDiagnosticRun;
+  const isCurrent = () => run === pushDiagnosticRun && modal.open && output.isConnected;
+  button.disabled = true;
+  if (submit) submit.disabled = true;
+  output.hidden = false;
+  output.textContent = '正在检查后台连接，请等待（最多 15 秒）…';
+  try {
+    const report = await checkPushBackend(backendUrl);
+    if (!isCurrent()) return;
+    const permissions = { granted: '已允许', denied: '已拒绝', default: '尚未授权', unsupported: '当前浏览器不支持' };
+    output.textContent = [
+      report.ok ? '后台检查通过，尚需完成设备连接并验证通知送达。' : '后台检查未通过，请将以下检查结果反馈以继续排查。',
+      ...report.checks.map((check) => check.message),
+      `后台地址：${report.backendUrl}`,
+      `当前网站：${report.origin}`,
+      `打开方式：${report.standalone ? '主屏幕应用' : '浏览器网页'}`,
+      `通知权限：${permissions[report.notificationPermission] || '未知'}`,
+    ].join('\n');
+  } catch (error) { if (isCurrent()) output.textContent = error.message; }
+  finally { button.disabled = false; if (submit) submit.disabled = wasDisabled; }
 }
 function installDialog() {
   const status = pwaStatus();
@@ -334,6 +367,7 @@ document.addEventListener('click', async (event) => {
   const project = id ? projectFor(id) : null;
   switch (action) {
     case 'push-settings': pushDialog(); break;
+    case 'push-check': await checkPushConnection(button); break;
     case 'push-sync': await syncPush(true); if (modal.open) { closeModal(); pushDialog(); } break;
     case 'push-test': try { await testPush(); toast('测试通知已提交，请在 iPhone 确认是否收到。'); } catch (error) { errorMessage(error.message); } break;
     case 'push-disconnect': try { button.disabled = true; await disconnectPush(); closeModal(); pushDialog(); toast('后台提醒已撤销'); } catch (error) { button.disabled = false; errorMessage(error.message); } break;
@@ -421,6 +455,13 @@ document.addEventListener('change', async (event) => {
   } else if (target.id === 'item-project' || target.id === 'item-scheduled') updateScheduleFields();
   else if (target.id === 'import-file') readImport(target.files[0]);
 });
+modal.addEventListener('input', (event) => {
+  if (event.target.name === 'backendUrl') {
+    pushDiagnosticRun++;
+    const output = $('#push-diagnostics', modal);
+    if (output) { output.hidden = true; output.textContent = ''; }
+  }
+});
 modal.addEventListener('submit', async (event) => {
   if (saveBusy) { event.preventDefault(); return; }
   event.preventDefault();
@@ -431,9 +472,13 @@ modal.addEventListener('submit', async (event) => {
   if (form.dataset.form === 'push') {
     const submit = $('button[type=submit]', form);
     submit.disabled = true;
-    try { await connectPush(data.get('backendUrl').trim(), data.get('pairingSecret')); closeModal(); pushDialog(); toast('已连接后台，日程提醒安排已同步'); }
-    catch (error) { errorMessage(error.message); }
-    finally { const secret = $('[name=pairingSecret]', form); if (secret) secret.value = ''; submit.disabled = false; }
+    const check = $('[data-action=push-check]', modal);
+    if (check) check.disabled = true;
+    try {
+      await connectPush(data.get('backendUrl').trim(), data.get('pairingSecret'));
+      if (form.isConnected && modal.open) { closeModal(); pushDialog(); toast('已连接后台，日程提醒安排已同步'); }
+    } catch (error) { if (form.isConnected && modal.open) errorMessage(error.message); }
+    finally { const secret = $('[name=pairingSecret]', form); if (secret) secret.value = ''; submit.disabled = false; if (check) check.disabled = false; }
   } else if (form.dataset.form === 'project') {
     const project = { id: id || uid(), name: data.get('name').trim(), goal: data.get('goal').trim(), deadline: data.get('deadline') || null, color: data.get('color'), archived: id ? projectFor(id).archived : false, isDemo: false };
     if (await commit((next) => {

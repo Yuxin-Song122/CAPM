@@ -1,6 +1,6 @@
 {
   "name": "xuri-planner",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "description": "序日：支持 iPhone 主屏幕安装与离线使用的日程和项目管理 PWA",
@@ -12,6 +12,7 @@
     "test:pwa": "python3 -u tests/pwa_browser_test.py",
     "test:upgrade": "python3 -u tests/pwa_upgrade_test.py",
     "test:push-client": "python3 -u tests/push_client_test.py",
+    "test:push-diagnostics": "python3 -u tests/push_diagnostics_test.py",
     "test:push-backend": "node tests/push-backend.test.mjs",
     "test": "node tests/model.test.mjs && node tests/store.test.mjs",
     "test:browser": "python3 -u tests/browser_test.py"
