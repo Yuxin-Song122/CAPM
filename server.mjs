@@ -33,11 +33,20 @@ const files = new Map([
   ['/src/device-store.js', ['src/device-store.js', 'text/javascript; charset=utf-8']],
   ['/src/push-client.js', ['src/push-client.js', 'text/javascript; charset=utf-8']],
   ['/src/pwa.js', ['src/pwa.js', 'text/javascript; charset=utf-8']],
+  ...['planning-ui.js', 'notice-parser.js', 'plan-parser.js', 'ocr.js'].map((name) => [`/src/${name}`, [`src/${name}`, 'text/javascript; charset=utf-8']]),
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
   ...['apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'].map((name) => [`/icons/${name}`, [`icons/${name}`, 'image/png']]),
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
 ]);
+const ocrManifest = JSON.parse(await readFile(new URL('vendor/ocr/manifest.json', root), 'utf8'));
+files.set('/vendor/ocr/manifest.json', ['vendor/ocr/manifest.json', 'application/json; charset=utf-8']);
+for (const entry of ocrManifest.files) {
+  if (!/^[a-zA-Z0-9_./-]+$/.test(entry.path) || entry.path.split('/').some((part) => !part || part === '.' || part === '..')) throw new Error('OCR 资源清单路径无效。');
+  const name = `vendor/ocr/${entry.path}`;
+  const type = name.endsWith('.js') ? 'text/javascript; charset=utf-8' : name.endsWith('.gz') ? 'application/octet-stream' : 'text/plain; charset=utf-8';
+  files.set(`/${name}`, [name, type]);
+}
 function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
@@ -70,7 +79,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
   try {
     const requestPath = new URL(req.url, 'http://localhost').pathname;
     if (requestPath === '/api/state') { await api(req, res); return; }

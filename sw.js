@@ -4,9 +4,17 @@ const CACHE_NAME = `${CACHE_PREFIX}2026-11-04-pwa-v1`;
 const ASSETS = [
   './index.html', './styles.css', './favicon.svg', './manifest.webmanifest',
   './src/app.js', './src/push-client.js', './src/model.js', './src/storage.js', './src/device-store.js', './src/pwa.js',
+  './src/planning-ui.js', './src/notice-parser.js', './src/plan-parser.js', './src/ocr.js', './vendor/ocr/manifest.json',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ].map((asset) => new URL(asset, self.registration.scope).href);
 const INDEX = new URL('./index.html', self.registration.scope).href;
+const OCR_CACHE = 'xuri-ocr-6.0.1-models-v1';
+const OCR_ASSETS = [
+  './vendor/ocr/worker.min.js',
+  './vendor/ocr/core/tesseract-core-lstm.wasm.js',
+  './vendor/ocr/core/tesseract-core-simd-lstm.wasm.js',
+  './vendor/ocr/lang/chi_sim.traineddata.gz', './vendor/ocr/lang/eng.traineddata.gz',
+].map((asset) => new URL(asset, self.registration.scope).href);
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -53,6 +61,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   const asset = new URL(url.pathname, url.origin).href;
+  if (OCR_ASSETS.includes(asset)) {
+    // Models are downloaded only on first OCR use. Never cache a user image.
+    event.respondWith((async () => {
+      const cache = await caches.open(OCR_CACHE);
+      const saved = await cache.match(asset);
+      if (saved) return saved;
+      const response = await fetch(request);
+      if (response.ok) await cache.put(asset, response.clone());
+      return response;
+    })());
+    return;
+  }
   if (!ASSETS.includes(asset)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);

@@ -9,15 +9,26 @@ const output = new URL('../dist/', import.meta.url);
 const assets = [
   'index.html', 'styles.css', 'favicon.svg', 'manifest.webmanifest', 'sw.js',
   'src/app.js', 'src/push-client.js', 'src/model.js', 'src/storage.js', 'src/device-store.js', 'src/pwa.js',
+  'src/planning-ui.js', 'src/notice-parser.js', 'src/plan-parser.js', 'src/ocr.js',
+  'vendor/ocr/manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png',
 ];
+const ocrManifest = JSON.parse(await readFile(new URL('vendor/ocr/manifest.json', root), 'utf8'));
+for (const entry of ocrManifest.files) {
+  if (!/^[a-zA-Z0-9_./-]+$/.test(entry.path) || entry.path.split('/').some((part) => !part || part === '.' || part === '..') || !/^[a-f0-9]{64}$/.test(entry.sha256)) throw new Error('OCR 资源清单路径或校验值无效。');
+  assets.push(`vendor/ocr/${entry.path}`);
+}
 
 const source = new Map();
 for (const name of assets) {
   const info = await lstat(new URL(name, root));
   if (!info.isFile() || info.isSymbolicLink()) throw new Error(`静态发布文件不是普通文件：${name}`);
   source.set(name, await readFile(new URL(name, root)));
+}
+for (const entry of ocrManifest.files) {
+  const bytes = source.get(`vendor/ocr/${entry.path}`);
+  if (bytes.length !== entry.bytes || createHash('sha256').update(bytes).digest('hex') !== entry.sha256) throw new Error(`OCR 资源校验失败：${entry.path}`);
 }
 const html = source.get('index.html').toString('utf8');
 if (!/<meta\s+name="xuri-storage"\s+content="device"\s*\/?\s*>/.test(html)) {

@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND = "https://push.example.test"
 OTHER_BACKEND = "https://other-push.example.test"
 PAIRING_SENTINEL = "synthetic-pairing-value-must-stay-in-the-form"
-LOCAL_NOTE = "仅保存在本地的诊断测试备注"
+LOCAL_LOCATION = "仅保存在本地的诊断测试地点"
 LOCAL_GOAL = "诊断不能修改的项目目标"
 
 INITIALIZE = """() => {
@@ -72,7 +72,7 @@ def assert_read_only(page, before, writes, requests):
         assert request["body"] is None, "诊断不应上传请求正文"
         assert not request["authorization"], "诊断不应发送设备令牌"
     serialized = json.dumps(requests, ensure_ascii=False)
-    for value in (PAIRING_SENTINEL, LOCAL_NOTE, LOCAL_GOAL):
+    for value in (PAIRING_SENTINEL, LOCAL_LOCATION, LOCAL_GOAL):
         assert value not in serialized, "诊断上传了本地输入或业务数据"
 
 
@@ -209,7 +209,7 @@ def run():
                 modal.locator("[name=date]").fill("2040-01-19")
                 modal.locator("[name=start]").fill("09:00")
                 modal.locator("[name=end]").fill("10:00")
-                modal.locator("[name=notes]").fill(LOCAL_NOTE)
+                modal.locator("[name=location]").fill(LOCAL_LOCATION)
                 modal.get_by_role("button", name="添加日程", exact=True).click()
                 expect(modal).not_to_be_visible()
                 before = page.evaluate(READ_ALL)

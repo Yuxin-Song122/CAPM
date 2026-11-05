@@ -6,12 +6,14 @@ import {
 import { readDisk, writeDisk, isDeviceStorage } from './storage.js';
 import { pwaStatus, requestPwaUpdate } from './pwa.js';
 import { initPush, pushStatus, pushSupport, connectPush, disconnectPush, syncPush, testPush, checkPushBackend, DEFAULT_PUSH_BACKEND_URL } from './push-client.js';
+import { initPlanningUI, openNoticeProject, openPlanBuilder } from './planning-ui.js';
+import { recognizeNotificationImage } from './ocr.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app');
 const modal = $('#modal');
 const today = localDate();
-const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.2.3';
+const appVersion = document.querySelector('meta[name="xuri-release"]')?.content || '1.3.0';
 const savedLabel = () => isDeviceStorage ? '已保存到此设备' : '已保存到文件';
 const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const paths = {
@@ -37,6 +39,7 @@ const paths = {
   restore: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6M12 7v5l4 2"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
   book: '<path d="M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H3Zm18 0h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-2h5Z"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
 };
 const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.calendar}</svg>`;
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -59,6 +62,7 @@ let saveStatus = 'saved';
 let syncBusy = false;
 let legacyPending = false;
 let pushDiagnosticRun = 0;
+let noticeImageRun = 0;
 let ui = { view: 'calendar', selectedDate: today, year: parseDate(today).getFullYear(), month: parseDate(today).getMonth(), projectId: null, filter: 'all', sidebarOpen: false, calendarExpanded: false };
 
 function toast(message) {
@@ -122,6 +126,7 @@ function touchProject(next, projectId) {
 }
 function showModal(title, subtitle, body, wide = false) {
   pushDiagnosticRun++;
+  noticeImageRun++;
   pendingImport = null;
   modal.className = wide ? 'modal wide' : 'modal';
   modal.innerHTML = `<header class="modal-header"><div><h2 id="modal-title">${esc(title)}</h2>${subtitle ? `<p>${esc(subtitle)}</p>` : ''}</div><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭弹窗">${icon('close')}</button></header>${body}`;
@@ -131,6 +136,7 @@ function showModal(title, subtitle, body, wide = false) {
 }
 function closeModal() {
   pushDiagnosticRun++;
+  noticeImageRun++;
   modal.close();
   pendingImport = null;
 }
@@ -197,7 +203,7 @@ function completeBox(item) {
 function scheduleRow(item, allItems) {
   const p = projectFor(item.projectId);
   const conflict = !item.completed && allItems.some((other) => other.id !== item.id && !other.completed && item.start < other.end && other.start < item.end);
-  return `<article class="schedule-row ${item.completed ? 'is-complete' : ''}" data-item-id="${item.id}"><div class="time-label"><strong>${item.start}</strong><span>${item.end}</span></div><div class="timeline-rail"><span class="${p?.color || 'blue'}"></span></div><div class="schedule-item ${p?.color || 'blue'}">${completeBox(item)}<div class="item-content"><span class="item-title">${esc(item.title)}</span><div class="item-meta">${p ? `<button class="project-tag ${p.color}" data-action="open-project" data-id="${p.id}"><i></i>${esc(p.name)}${p.archived ? ' · 已归档' : ''}</button>` : '<span class="independent-tag">个人日程</span>'}${item.notes ? `<span class="item-note">${esc(item.notes)}</span>` : ''}${conflict ? '<span class="conflict-tag">时间有重叠</span>' : ''}</div></div>${itemActions(item)}</div></article>`;
+  return `<article class="schedule-row ${item.completed ? 'is-complete' : ''}" data-item-id="${item.id}"><div class="time-label"><strong>${item.start}</strong><span>${item.end}</span></div><div class="timeline-rail"><span class="${p?.color || 'blue'}"></span></div><div class="schedule-item ${p?.color || 'blue'}">${completeBox(item)}<div class="item-content"><span class="item-title">${esc(item.title)}</span><div class="item-meta">${p ? `<button class="project-tag ${p.color}" data-action="open-project" data-id="${p.id}"><i></i>${esc(p.name)}${p.archived ? ' · 已归档' : ''}</button>` : '<span class="independent-tag">个人日程</span>'}${item.location ? `<span class="item-location">${icon('pin')}${esc(item.location)}</span>` : ''}${item.notes ? `<span class="item-note" title="原备注（保留）">${esc(item.notes)}</span>` : ''}${conflict ? '<span class="conflict-tag">时间有重叠</span>' : ''}</div></div>${itemActions(item)}</div></article>`;
 }
 function projectView() {
   const p = projectFor(ui.projectId);
@@ -207,9 +213,10 @@ function projectView() {
   const filtered = items.filter((item) => ui.filter === 'all' || (ui.filter === 'done' ? item.completed : !item.completed));
   const days = p.deadline ? daysBetween(today, p.deadline) : null;
   return `<section class="page-intro project-intro"><div><h1 id="page-title" tabindex="-1"><span class="project-heading-icon ${p.color}">${icon(p.color === 'sage' ? 'target' : p.color === 'lavender' ? 'book' : 'folder')}</span>${esc(p.name)}${p.archived ? '<span class="neutral-tag">已归档</span>' : ''}</h1><p class="intro-copy">查看目标、截止日期与任务进度。</p></div><div class="project-header-actions"><button class="button secondary" data-action="edit-project" data-id="${p.id}">${icon('edit')}编辑项目</button><button class="icon-button" data-action="${p.archived ? 'restore-project' : 'archive-project'}" data-id="${p.id}" aria-label="${p.archived ? '恢复项目' : '归档项目'}" title="${p.archived ? '恢复项目' : '归档项目'}">${icon(p.archived ? 'restore' : 'archive')}</button></div></section>
-    <section class="project-overview panel"><div class="project-goal"><h2>项目目标</h2><p>${p.goal ? esc(p.goal) : '未填写目标'}</p><div class="deadline"><span>${icon('calendar')}截止日期</span><strong>${p.deadline ? dateText(p.deadline, true) : '暂未设置'}</strong>${days !== null ? `<span class="deadline-pill ${days < 0 ? 'overdue' : ''}">${days < 0 ? `已过 ${-days} 天` : days === 0 ? '就在今天' : `还有 ${days} 天`}</span>` : ''}</div></div><div class="project-progress"><div class="progress-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" fill="none" stroke="#edf0eb" stroke-width="7"/><circle cx="60" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${stats.percent * Math.PI} 314.16" transform="rotate(-90 60 60)"/></svg><strong>${stats.percent}<small>%</small></strong></div><span>目标完成度</span><small>${stats.completed} / ${stats.total} 项任务已完成</small></div></section>
+    <section class="project-overview panel"><div class="project-goal"><h2>项目目标</h2><p>${p.goal ? esc(p.goal) : '未填写目标'}</p><div class="deadline"><span>${icon('calendar')}截止日期</span><strong>${p.deadline ? dateText(p.deadline, true) + (p.deadlineTime ? ' ' + esc(p.deadlineTime) : '') : '暂未设置'}</strong>${p.location ? `<p class="item-location">${icon('pin')}${esc(p.location)}</p>` : ''}${days !== null ? `<span class="deadline-pill ${days < 0 ? 'overdue' : ''}">${days < 0 ? `已过 ${-days} 天` : days === 0 ? '就在今天' : `还有 ${days} 天`}</span>` : ''}</div></div><div class="project-progress"><div class="progress-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" fill="none" stroke="#edf0eb" stroke-width="7"/><circle cx="60" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${stats.percent * Math.PI} 314.16" transform="rotate(-90 60 60)"/></svg><strong>${stats.percent}<small>%</small></strong></div><span>目标完成度</span><small>${stats.completed} / ${stats.total} 项任务已完成</small></div></section>
+    <section class="project-plan panel"><div><h2>项目实施计划</h2><p>${esc(p.implementationPlan || '填写重复规则，预览后批量安排到日历。')}</p></div><button class="button secondary" data-action="project-plan" data-id="${p.id}">${icon('calendar')}生成计划日程</button>${p.noticeText ? `<details class="legacy-note"><summary>通知原文</summary><p>${esc(p.noticeText)}</p></details>` : ''}</section>
     <section class="metrics project-metrics" aria-label="项目进度">${metric('folder', '全部任务', stats.total, '项')}${metric('checkCircle', '已完成', stats.completed, '项', 'clay')}${metric('calendar', '已安排到日历', items.filter((item) => item.date).length, '项', 'blue')}</section>
-    <section class="project-task-section"><div class="section-heading"><div><h2>任务清单</h2></div><button class="button primary" data-action="new-task" data-id="${p.id}">${icon('plus')}添加任务</button></div><div class="panel task-panel"><div class="task-tabs" role="group" aria-label="筛选任务">${[['all', '全部任务', stats.total], ['pending', '待完成', stats.total - stats.completed], ['done', '已完成', stats.completed]].map(([key, label, count]) => `<button class="task-tab ${ui.filter === key ? 'active' : ''}" data-action="filter" data-filter="${key}" aria-pressed="${ui.filter === key}">${label}<span>${count}</span></button>`).join('')}</div>${filtered.length ? `<div class="task-list">${filtered.map((item) => `<article class="task-row ${item.completed ? 'is-complete' : ''}" data-item-id="${item.id}">${completeBox(item)}<div class="item-content"><span class="item-title">${esc(item.title)}</span>${item.notes ? `<p class="task-notes">${esc(item.notes)}</p>` : ''}<div class="item-meta">${item.date ? `<button class="task-date" data-action="go-item-date" data-id="${item.id}">${icon('calendar')}${dateText(item.date)}<span>${item.start}–${item.end}</span>${icon('arrow')}</button>` : `<button class="unscheduled-button" data-action="schedule-item" data-id="${item.id}">${icon('clock')}安排时间</button>`}</div></div>${itemActions(item)}</article>`).join('')}</div>` : emptyState('leaf', items.length ? '暂无符合条件的任务' : '暂无任务', items.length ? '切换筛选，查看其他任务。' : '添加任务后可设置日期和时间。', items.length ? '' : '添加第一个任务', 'new-task')}</div><p class="section-tip">${icon('info')}安排好日期和时间的任务，会自动出现在日历中；两处修改始终同步。</p></section>`;
+    <section class="project-task-section"><div class="section-heading"><div><h2>任务清单</h2></div><button class="button primary" data-action="new-task" data-id="${p.id}">${icon('plus')}添加任务</button></div><div class="panel task-panel"><div class="task-tabs" role="group" aria-label="筛选任务">${[['all', '全部任务', stats.total], ['pending', '待完成', stats.total - stats.completed], ['done', '已完成', stats.completed]].map(([key, label, count]) => `<button class="task-tab ${ui.filter === key ? 'active' : ''}" data-action="filter" data-filter="${key}" aria-pressed="${ui.filter === key}">${label}<span>${count}</span></button>`).join('')}</div>${filtered.length ? `<div class="task-list">${filtered.map((item) => `<article class="task-row ${item.completed ? 'is-complete' : ''}" data-item-id="${item.id}">${completeBox(item)}<div class="item-content"><span class="item-title">${esc(item.title)}</span>${item.location ? `<p class="item-location">${icon('pin')}${esc(item.location)}</p>` : ''}${item.notes ? `<p class="task-notes">${esc(item.notes)}</p>` : ''}<div class="item-meta">${item.date ? `<button class="task-date" data-action="go-item-date" data-id="${item.id}">${icon('calendar')}${dateText(item.date)}<span>${item.start}–${item.end}</span>${icon('arrow')}</button>` : `<button class="unscheduled-button" data-action="schedule-item" data-id="${item.id}">${icon('clock')}安排时间</button>`}</div></div>${itemActions(item)}</article>`).join('')}</div>` : emptyState('leaf', items.length ? '暂无符合条件的任务' : '暂无任务', items.length ? '切换筛选，查看其他任务。' : '添加任务后可设置日期和时间。', items.length ? '' : '添加第一个任务', 'new-task')}</div><p class="section-tip">${icon('info')}安排好日期和时间的任务，会自动出现在日历中；两处修改始终同步。</p></section>`;
 }
 function archiveView() {
   const projects = state.projects.filter((p) => p.archived);
@@ -253,14 +260,26 @@ function selectDate(date, scroll = false) {
 }
 
 function projectForm(project = null) {
-  showModal(project ? '编辑项目' : '新建项目', '', `<form data-form="project" data-id="${project?.id || ''}"><div class="modal-body">${formError}<label class="field">项目名称 <span class="required">*</span><input name="name" required maxlength="80" placeholder="例如：六级考试、XX 项目提交" value="${esc(project?.name || '')}" autofocus></label><label class="field">项目目标<textarea name="goal" rows="3" maxlength="2000" placeholder="填写项目目标（选填）">${esc(project?.goal || '')}</textarea></label><label class="field">截止日期 <span class="field-optional">选填</span><input type="date" name="deadline" min="1900-01-01" max="2100-12-31" value="${project?.deadline || ''}"></label><fieldset class="color-field"><legend>选一个项目颜色</legend><div class="color-options">${COLORS.map((color) => `<label class="color-option ${color}" title="${COLOR_LABELS[color]}"><input type="radio" name="color" value="${color}" ${(project?.color || 'sage') === color ? 'checked' : ''} aria-label="${COLOR_LABELS[color]}"><span>${icon('check')}</span></label>`).join('')}</div></fieldset></div>${formFooter(project ? '保存修改' : '创建项目')}</form>`);
+  showModal(project ? '编辑项目' : '新建项目', '', `<form data-form="project" data-id="${project?.id || ''}"><div class="modal-body">${formError}
+    <label class="field">项目名称 <span class="required">*</span><input name="name" required maxlength="80" placeholder="例如：六级考试、XX 项目提交" value="${esc(project?.name || '')}" autofocus></label>
+    <label class="field">项目目标<textarea name="goal" rows="3" maxlength="2000" placeholder="填写项目目标（选填）">${esc(project?.goal || '')}</textarea></label>
+    <div class="planning-field-grid"><label class="field">截止日期 <span class="field-optional">选填</span><input type="date" name="deadline" min="1900-01-01" max="2100-12-31" value="${project?.deadline || ''}"></label><label class="field">截止时间 <span class="field-optional">选填</span><input type="time" name="deadlineTime" value="${esc(project?.deadlineTime || '')}"></label></div>
+    <label class="field">项目地点 <span class="field-optional">选填</span><input name="location" maxlength="500" value="${esc(project?.location || '')}" placeholder="例如：图书馆、自习室、线上"></label>
+    <label class="field">项目实施计划 <span class="field-optional">选填</span><textarea name="implementationPlan" rows="4" maxlength="5000" placeholder="例如：每个工作日安排两个小时学习，周末三点到五点做真题">${esc(project?.implementationPlan || '')}</textarea></label>
+    <p class="field-hint">填写后保存项目，进入排程预览。日期、时段和冲突可核对修改，确认后才加入日历。</p>
+    ${project?.noticeText ? `<details class="legacy-note"><summary>查看通知原文</summary><p>${esc(project.noticeText)}</p></details>` : ''}
+    <fieldset class="color-field"><legend>选一个项目颜色</legend><div class="color-options">${COLORS.map((color) => `<label class="color-option ${color}" title="${COLOR_LABELS[color]}"><input type="radio" name="color" value="${color}" ${(project?.color || 'sage') === color ? 'checked' : ''} aria-label="${COLOR_LABELS[color]}"><span>${icon('check')}</span></label>`).join('')}</div></fieldset></div>${formFooter(project ? '保存修改' : '创建项目')}</form>`);
 }
 function itemForm(item = null, projectId = null, forceSchedule = false) {
   const association = item ? item.projectId : projectId;
   const scheduled = !!item?.date || !association || forceSchedule;
   const isTask = !!association;
   const projectOptions = state.projects.filter((p) => !p.archived || p.id === association);
-  showModal(item ? '编辑任务与日程' : isTask ? '添加任务' : '添加日程', '项目任务与日历使用同一份记录，修改会自动同步。', `<form data-form="item" data-id="${item?.id || ''}"><div class="modal-body">${formError}<label class="field">${isTask ? '任务' : '日程'}名称 <span class="required">*</span><input name="title" required maxlength="120" placeholder="填写名称" value="${esc(item?.title || '')}" autofocus></label><label class="field">关联项目<select name="projectId" id="item-project"><option value="">不关联项目 · 独立日程</option>${projectOptions.map((p) => `<option value="${p.id}" ${p.id === association ? 'selected' : ''}>${esc(p.name)}${p.archived ? '（已归档）' : ''}</option>`).join('')}</select></label><div class="schedule-toggle"><label><input type="checkbox" id="item-scheduled" name="scheduled" ${scheduled ? 'checked' : ''} ${!association ? 'disabled' : ''}>${icon('calendar')}安排到日历</label><small id="schedule-hint">${association ? '也可以先存为任务，之后再安排时间。' : '独立日程需要填写日期与时间。'}</small></div><div id="schedule-fields" ${scheduled ? '' : 'hidden'}><label class="field">日期 <span class="required">*</span><input type="date" name="date" min="1900-01-01" max="2100-12-31" value="${item?.date || ui.selectedDate}" ${scheduled ? 'required' : 'disabled'}></label><div class="field-row"><label class="field">开始时间 <span class="required">*</span><input type="time" name="start" value="${item?.start || '09:00'}" ${scheduled ? 'required' : 'disabled'}></label><span class="time-separator">—</span><label class="field">结束时间 <span class="required">*</span><input type="time" name="end" value="${item?.end || '10:00'}" ${scheduled ? 'required' : 'disabled'}></label></div><p class="field-hint">仅支持当天的时间段；跨天安排请拆成两条日程。</p></div><label class="field">备注 <span class="field-optional">选填</span><textarea name="notes" rows="2" maxlength="2000" placeholder="填写备注（选填）">${esc(item?.notes || '')}</textarea></label><label class="completed-field"><input type="checkbox" name="completed" ${item?.completed ? 'checked' : ''}>这件事已经完成</label></div>${formFooter(item ? '保存修改' : isTask ? '添加任务' : '添加日程')}</form>`);
+  showModal(item ? '编辑任务与日程' : isTask ? '添加任务' : '添加日程', '项目任务与日历使用同一份记录，修改会自动同步。', `<form data-form="item" data-id="${item?.id || ''}"><div class="modal-body">${formError}<label class="field">${isTask ? '任务' : '日程'}名称 <span class="required">*</span><input name="title" required maxlength="120" placeholder="填写名称" value="${esc(item?.title || '')}" autofocus></label><label class="field">关联项目<select name="projectId" id="item-project"><option value="">不关联项目 · 独立日程</option>${projectOptions.map((p) => `<option value="${p.id}" ${p.id === association ? 'selected' : ''}>${esc(p.name)}${p.archived ? '（已归档）' : ''}</option>`).join('')}</select></label><div class="schedule-toggle"><label><input type="checkbox" id="item-scheduled" name="scheduled" ${scheduled ? 'checked' : ''} ${!association ? 'disabled' : ''}>${icon('calendar')}安排到日历</label><small id="schedule-hint">${association ? '也可以先存为任务，之后再安排时间。' : '独立日程需要填写日期与时间。'}</small></div><div id="schedule-fields" ${scheduled ? '' : 'hidden'}><label class="field">日期 <span class="required">*</span><input type="date" name="date" min="1900-01-01" max="2100-12-31" value="${item?.date || ui.selectedDate}" ${scheduled ? 'required' : 'disabled'}></label><div class="field-row"><label class="field">开始时间 <span class="required">*</span><input type="time" name="start" value="${item?.start || '09:00'}" ${scheduled ? 'required' : 'disabled'}></label><span class="time-separator">—</span><label class="field">结束时间 <span class="required">*</span><input type="time" name="end" value="${item?.end || '10:00'}" ${scheduled ? 'required' : 'disabled'}></label></div><p class="field-hint">仅支持当天的时间段；跨天安排请拆成两条日程。</p></div>
+    <label class="field">地点 <span class="field-optional">选填</span><textarea name="location" rows="2" maxlength="500" placeholder="例如：图书馆二楼、会议室、线上">${esc(item?.location || '')}</textarea></label>
+    ${item?.notes ? `<details class="legacy-note"><summary>原备注（保留）</summary><p>${esc(item.notes)}</p></details>` : ''}
+    <details id="notice-tools" class="notice-tools"><summary>从通知建立项目</summary><p class="field-hint">粘贴文字或选择通知图片，核对主要内容、截止时间和地点后建立项目。图片仅在本机识别，不上传。</p><label class="field">通知内容<textarea name="noticeInput" maxlength="10000" rows="5" placeholder="粘贴通知全文，或选择图片识别文字"></textarea></label><label class="file-picker">${icon('upload')}<span>选择通知图片<small>PNG、JPG 或 WebP；首次识别需联网下载识字资源</small></span><input type="file" id="notice-image" accept="image/png,image/jpeg,image/webp" aria-label="选择通知图片"></label><button type="button" class="button secondary" data-action="notice-analyze">解析通知并预览项目</button><p id="notice-status" class="notice-status" role="status" aria-live="polite"></p></details>
+    <label class="completed-field"><input type="checkbox" name="completed" ${item?.completed ? 'checked' : ''}>这件事已经完成</label></div>${formFooter(item ? '保存修改' : isTask ? '添加任务' : '添加日程')}</form>`);
 }
 function updateScheduleFields() {
   const project = $('#item-project', modal).value;
@@ -270,6 +289,49 @@ function updateScheduleFields() {
   $('#schedule-hint', modal).textContent = project ? '也可以先存为任务，之后再安排时间。' : '独立日程需要填写日期与时间。';
   $('#schedule-fields', modal).hidden = !checkbox.checked;
   $('#schedule-fields', modal).querySelectorAll('input').forEach((input) => { input.disabled = !checkbox.checked; input.required = checkbox.checked; });
+}
+async function readNoticeImage(file) {
+  if (!file) return;
+  const input = $('#notice-image', modal);
+  const area = $('[name=noticeInput]', modal);
+  const output = $('#notice-status', modal);
+  const analyze = $('[data-action=notice-analyze]', modal);
+  const run = ++noticeImageRun;
+  const current = () => run === noticeImageRun && modal.open && area.isConnected;
+  input.disabled = true;
+  analyze.disabled = true;
+  output.textContent = '正在准备图片识别，首次使用需下载识字资源，请保持联网…';
+  try {
+    const recognized = await recognizeNotificationImage(file, { onProgress: ({ progress, status }) => {
+      if (current()) output.textContent = `${status || '正在识别图片'}${Number.isFinite(progress) ? ` · ${Math.round(progress * 100)}%` : ''}`;
+    } });
+    if (!current()) return;
+    area.value = [area.value.trim(), recognized.trim()].filter(Boolean).join('\n');
+    delete area.dataset.projectCreated;
+    output.textContent = '文字已识别，请核对上方内容，再点击「解析通知并预览项目」。';
+    if (area.value.length > 10000) output.textContent = '识别文字超过 10000 字，请先删减上方内容再解析；原文字仍在输入框内。';
+  } catch (error) { if (current()) output.textContent = error.message; }
+  finally { input.disabled = false; analyze.disabled = false; input.value = ''; }
+}
+function analyzeNotice() {
+  const form = $('form[data-form=item]', modal);
+  const input = $('[name=noticeInput]', form);
+  if (!input?.value.trim()) { errorMessage('请先粘贴通知文字，或选择通知图片进行识别。'); return; }
+  try {
+    openNoticeProject(input.value, { onCreated: (project) => {
+      if (!form.isConnected || !modal.open) return;
+      const select = $('[name=projectId]', form);
+      select.add(new Option(project.name, project.id));
+      select.value = project.id;
+      const title = $('[name=title]', form);
+      const location = $('[name=location]', form);
+      if (!title.value.trim()) title.value = project.name;
+      if (!location.value.trim()) location.value = project.location || '';
+      input.dataset.projectCreated = project.id;
+      updateScheduleFields();
+      $('#notice-status', form).textContent = `已建立项目「${project.name}」，当前日程已关联。可继续填写日程，或关闭窗口查看项目。`;
+    } });
+  } catch (error) { errorMessage(error.message); }
 }
 function confirmAction(title, description, button, action, id = '', danger = false) {
   showModal(title, '', `<div class="modal-body confirm-body">${formError}<div class="confirm-symbol ${danger ? 'danger' : ''}">${icon(danger ? 'trash' : 'archive')}</div><p>${esc(description)}</p></div><footer class="modal-footer"><button type="button" class="button secondary" data-action="close-modal">取消</button><button type="button" class="button ${danger ? 'danger' : 'primary'}" data-action="${action}" data-id="${id}">${button}</button></footer>`);
@@ -382,6 +444,8 @@ document.addEventListener('click', async (event) => {
     case 'new-project': projectForm(); break;
     case 'edit-project': if (project) projectForm(project); break;
     case 'new-event': itemForm(); break;
+    case 'notice-analyze': analyzeNotice(); break;
+    case 'project-plan': if (project) openPlanBuilder(project); break;
     case 'new-task': itemForm(null, id || ui.projectId); break;
     case 'edit-item': if (item) itemForm(item); break;
     case 'schedule-item': if (item) itemForm(item, item.projectId, true); break;
@@ -454,8 +518,10 @@ document.addEventListener('change', async (event) => {
     ui.year = Number($('#calendar-year').value); ui.month = Number($('#calendar-month').value); render();
   } else if (target.id === 'item-project' || target.id === 'item-scheduled') updateScheduleFields();
   else if (target.id === 'import-file') readImport(target.files[0]);
+  else if (target.id === 'notice-image') void readNoticeImage(target.files[0]);
 });
 modal.addEventListener('input', (event) => {
+  if (event.target.name === 'noticeInput') delete event.target.dataset.projectCreated;
   if (event.target.name === 'backendUrl') {
     pushDiagnosticRun++;
     const output = $('#push-diagnostics', modal);
@@ -480,15 +546,24 @@ modal.addEventListener('submit', async (event) => {
     } catch (error) { if (form.isConnected && modal.open) errorMessage(error.message); }
     finally { const secret = $('[name=pairingSecret]', form); if (secret) secret.value = ''; submit.disabled = false; if (check) check.disabled = false; }
   } else if (form.dataset.form === 'project') {
-    const project = { id: id || uid(), name: data.get('name').trim(), goal: data.get('goal').trim(), deadline: data.get('deadline') || null, color: data.get('color'), archived: id ? projectFor(id).archived : false, isDemo: false };
+    const previous = id ? projectFor(id) : null;
+    const planChanged = data.get('implementationPlan').trim() !== (previous?.implementationPlan || '');
+    const project = { ...previous, id: id || uid(), name: data.get('name').trim(), goal: data.get('goal').trim(), deadline: data.get('deadline') || null, deadlineTime: data.get('deadlineTime') || '', location: data.get('location').trim(), implementationPlan: data.get('implementationPlan').trim(), color: data.get('color'), archived: previous?.archived || false, isDemo: false };
+    if (planChanged) delete project.implementationSettings;
     if (await commit((next) => {
       if (id) next.projects[next.projects.findIndex((p) => p.id === id)] = project;
       else next.projects.push(project);
-    }, id ? '项目已更新' : '项目已创建')) { closeModal(); navigate('project', project.id); }
+    }, id ? '项目已更新' : '项目已创建')) {
+      closeModal(); navigate('project', project.id);
+      if (project.implementationPlan && planChanged) openPlanBuilder(project);
+    }
   } else if (form.dataset.form === 'item') {
+    const noticeInput = $('[name=noticeInput]', form);
+    if (noticeInput?.value.trim() && !noticeInput.dataset.projectCreated) { errorMessage('通知文字尚未建立项目。请先解析并确认，或清空通知框后保存普通日程。'); return; }
     const projectId = data.get('projectId') || null;
     const scheduled = !projectId || $('#item-scheduled', modal).checked;
-    const item = { id: id || uid(), title: data.get('title').trim(), projectId, date: scheduled ? data.get('date') : null, start: scheduled ? data.get('start') : null, end: scheduled ? data.get('end') : null, notes: data.get('notes').trim(), completed: data.has('completed'), isDemo: false };
+    const previous = id ? state.items.find((item) => item.id === id) : null;
+    const item = { ...previous, id: id || uid(), title: data.get('title').trim(), projectId, date: scheduled ? data.get('date') : null, start: scheduled ? data.get('start') : null, end: scheduled ? data.get('end') : null, notes: previous?.notes || '', location: data.get('location').trim(), completed: data.has('completed'), isDemo: false };
     if (await commit((next) => {
       if (id) { const index = next.items.findIndex((i) => i.id === id); touchProject(next, next.items[index].projectId); next.items[index] = item; }
       else next.items.push(item);
@@ -576,4 +651,5 @@ document.addEventListener('xuri:pwa-status', () => {
   if (state && !saveBusy) render();
   if (modal.open && $('.install-status', modal)) { const status = pwaStatus(); $('.install-status', modal).textContent = status.ready ? '离线已就绪：可断网打开、修改项目和日程。' : status.error ? '离线未就绪，请联网后刷新重试。' : '离线资源准备中，请保持联网。'; }
 });
+initPlanningUI({ getState: () => state, commit, toast, onProjectCreated: (project) => { closeModal(); navigate('project', project.id); } });
 init();

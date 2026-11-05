@@ -1,5 +1,5 @@
 // Notification settings are separate from project/calendar data and its backups.
-export const DEFAULT_PUSH_BACKEND_URL = 'https://xuri-push.2832667234.workers.dev';
+export const DEFAULT_PUSH_BACKEND_URL = 'https://xuri-push-capm.pages.dev';
 const DB_NAME = 'xuri-push-settings-v1';
 let settings = null;
 let getItems = () => [];

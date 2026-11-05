@@ -47,11 +47,11 @@ def run():
     page.get_by_role('button',name='新建日程',exact=True).click();modal=page.locator('#modal')
     modal.locator('[name=title]').fill('后台提醒测试')
     modal.locator('[name=date]').fill('2040-01-19');modal.locator('[name=start]').fill('09:00');modal.locator('[name=end]').fill('10:00')
-    modal.locator('[name=notes]').fill('本地备注不应上传')
+    modal.locator('[name=location]').fill('本地地点不应上传')
     modal.get_by_role('button',name='添加日程',exact=True).click();expect(modal).not_to_be_visible()
     menu(page).locator('[data-action=push-settings]').click()
     expect(modal).to_contain_text('系统提醒未启用')
-    expect(modal.locator('[name=backendUrl]')).to_have_value('https://xuri-push.2832667234.workers.dev')
+    expect(modal.locator('[name=backendUrl]')).to_have_value('https://xuri-push-capm.pages.dev')
     modal.locator('[name=backendUrl]').fill('https://push.example.test')
     modal.locator('[name=pairingSecret]').fill('  synthetic-pairing-secret  ')
     modal.get_by_role('button',name='连接后台并启用通知',exact=True).click()
@@ -63,7 +63,7 @@ def run():
     item=scheduled[-1]['body']['items'][0]
     assert item['startAt']=='2040-01-19T01:00:00.000Z'
     assert set(item)=={'id','title','startAt'}
-    assert '本地备注不应上传' not in json.dumps(scheduled,ensure_ascii=False)
+    assert '本地地点不应上传' not in json.dumps(scheduled,ensure_ascii=False)
     assert isinstance(scheduled[-1]['body']['generation'],int)
     modal.get_by_role('button',name='发送测试通知',exact=True).click()
     expect(page.locator('#toast')).to_contain_text('测试通知已提交')

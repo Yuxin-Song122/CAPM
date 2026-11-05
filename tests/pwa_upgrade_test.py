@@ -14,12 +14,12 @@ from pwa_browser_test import menu
 
 ROOT = Path(__file__).resolve().parents[1]
 READ_ALL = """async () => await new Promise((resolve,reject) => {
- const opening=indexedDB.open('xuri-device-v1',1);
+ const opening=indexedDB.open('xuri-device-v1');
  opening.onerror=()=>reject(opening.error.message);
  opening.onsuccess=()=>{ const db=opening.result; const tx=db.transaction('snapshots','readonly');
  const table=tx.objectStore('snapshots'); const keys=table.getAllKeys(); const values=table.getAll();
  tx.oncomplete=()=>{ const result=Object.fromEntries(keys.result.map((k,i)=>[k,values.result[i]]));db.close();resolve(result);};
- tx.onabort=()=>reject(tx.error.message); };
+ tx.onabort=()=>{db.close();reject(tx.error.message);}; };
 })"""
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self, *_): pass
@@ -33,7 +33,7 @@ def run():
     with tempfile.TemporaryDirectory(prefix='xuri-upgrade-') as temporary:
         temp=Path(temporary); old=temp/'old'; old.mkdir()
         # The known release used by the user's existing installation.
-        archive=subprocess.check_output(['git','archive','79659be45708d6abb720922490c14ebcbd61bef3'],cwd=ROOT)
+        archive=subprocess.check_output(['git','archive','90bbabc'],cwd=ROOT)
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar: tar.extractall(old, filter='data')
         subprocess.run(['node','scripts/build-static.mjs'],cwd=old,check=True,stdout=subprocess.DEVNULL)
         serve=temp/'web';serve.mkdir();public=serve/'CAPM';shutil.copytree(old/'dist',public)
@@ -82,6 +82,31 @@ def run():
                 # Serve the new version at exactly the same origin, path and profile.
                 next_public=serve/'next';shutil.copytree(ROOT/'dist',next_public)
                 public.rename(serve/'retired');next_public.rename(public)
+                # Hold a deliberately uncooperative old connection. Exercise the
+                # new store directly at a separate test-only URL, outside the old
+                # worker's asset list, before the real app update.
+                probe=(ROOT/'src/device-store.js').read_text().replace("from './model.js'", "from './src/model.js'")
+                (public/'storage-upgrade-probe.js').write_text(probe)
+                page.evaluate("""async()=>await new Promise((resolve,reject)=>{
+                  const request=indexedDB.open('xuri-device-v1',1);
+                  request.onerror=()=>reject(request.error.message);
+                  request.onsuccess=()=>{window._heldOldDatabase=request.result;resolve();};
+                })""")
+                blocked=page.evaluate("""async()=>{
+                  const probe=await import('./storage-upgrade-probe.js');
+                  try {await probe.readDevice();return 'unexpected-success';}
+                  catch(error){return error.message;}
+                }""")
+                assert '关闭其他序日页面' in blocked,blocked
+                page.evaluate('window._heldOldDatabase.close()')
+                assert page.evaluate(READ_ALL)==before,'被阻塞的迟到请求改写了原始记录'
+                # Let the aborted late upgrade finish before inspecting its version.
+                unchanged_version=page.evaluate("""async()=>await new Promise((resolve,reject)=>{
+                  const request=indexedDB.open('xuri-device-v1');
+                  request.onerror=()=>reject(request.error.message);
+                  request.onsuccess=()=>{const db=request.result;const version=db.version;db.close();resolve(version);};
+                })""")
+                assert unchanged_version==1,'已拒绝的阻塞请求不应继续升级数据库'
                 page.evaluate("async()=>{ const r=await navigator.serviceWorker.getRegistration();await r.update(); }")
                 expect(page.get_by_role('button',name='更新应用',exact=True)).to_be_visible(timeout=20000)
                 page.get_by_role('button',name='更新应用',exact=True).click()
@@ -92,6 +117,19 @@ def run():
                 expect(page.get_by_role('checkbox',name='完成：保留的任务',exact=True)).to_be_checked()
                 expect(page.locator('.schedule-row')).to_have_count(2)
                 assert page.evaluate(READ_ALL)==before,'升级改写了原有数据或版本号'
+                database_version=page.evaluate("""async()=>await new Promise((resolve,reject)=>{
+                  const request=indexedDB.open('xuri-device-v1');
+                  request.onerror=()=>reject(request.error.message);
+                  request.onsuccess=()=>{const db=request.result;const version=db.version;db.close();resolve(version);};
+                })""")
+                assert database_version==2,'应仅将同名 IndexedDB 内部版本升级为2'
+                stale_open=page.evaluate("""async()=>await new Promise(resolve=>{
+                  const request=indexedDB.open('xuri-device-v1',1);
+                  request.onerror=(event)=>{event.preventDefault();resolve(request.error.name);};
+                  request.onsuccess=()=>{request.result.close();resolve('unexpected-success');};
+                })""")
+                assert stale_open=='VersionError','旧版客户端不应继续打开数据库写回缺失新字段的记录'
+                assert page.evaluate(READ_ALL)==before,'旧版打开失败后原始快照应保持相同'
                 assert page.get_by_role('button',name='打开项目栏',exact=True).bounding_box()['y']>=14
                 page.get_by_role('button',name='展开月历',exact=True).click()
                 expect(page.locator('#calendar-content')).to_be_visible()
@@ -118,6 +156,7 @@ def run():
                 print('PASS 旧版实际 Service Worker 更新→新版，IndexedDB 全部记录和 revision 逐项相同')
                 print('PASS 折叠/展开、日期切换、原任务完成状态和日程备注保留，五种屏幕无横向溢出')
                 print('PASS 顶部点击区留白、新版离线重新打开保留全部原始数据；没有清除或重建业务数据库')
+                print('PASS 旧连接阻塞时提示关闭其他页面，迟到升级不写入；数据库内部v2阻止旧v1客户端重新打开')
         finally:
             server.shutdown();server.server_close();thread.join(timeout=3)
 if __name__=='__main__':run()

@@ -100,7 +100,7 @@ def run():
         for name in public_files:
             check((ROOT / name).is_file(), f"缺少 PWA 文件：{name}")
             shutil.copy2(ROOT / name, public / name)
-        for directory in ["src", "icons"]:
+        for directory in ["src", "icons", "vendor"]:
             shutil.copytree(ROOT / directory, public / directory)
         check('name="xuri-storage" content="device"' in (public / "index.html").read_text(), "静态网页必须使用设备本地存储")
         server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(StaticHandler, directory=temporary))

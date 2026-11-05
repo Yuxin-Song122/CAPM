@@ -49,6 +49,28 @@ function id(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) fail('记录编号格式不正确。');
   return value;
 }
+function optionalText(source, name, label, max) {
+  return Object.hasOwn(source, name) ? { [name]: text(source[name], label, max) } : {};
+}
+function planSettings(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('项目实施计划设置格式不正确。');
+  if (!validTime(value.defaultStart)) fail('计划默认开始时间无效。');
+  if (!validDate(value.startDate) || !validDate(value.endDate) || value.endDate < value.startDate || daysBetween(value.startDate, value.endDate) + 1 > 366) {
+    fail('计划生成日期范围无效（最多 366 天）。');
+  }
+  if (!Array.isArray(value.rules) || value.rules.length < 1 || value.rules.length > 50) fail('计划设置需要 1–50 条规则。');
+  const rules = Array.from(value.rules, (rule) => {
+    if (!rule || typeof rule !== 'object' || Array.isArray(rule)) fail('计划规则格式不正确。');
+    if (!Array.isArray(rule.days)) fail('计划规则星期无效，请选择不重复的星期一至星期日。');
+    const days = Array.from(rule.days);
+    if (!days.length || days.some((day) => !Number.isInteger(day) || day < 1 || day > 7) || new Set(days).size !== days.length) {
+      fail('计划规则星期无效，请选择不重复的星期一至星期日。');
+    }
+    if (!validTime(rule.start) || !validTime(rule.end) || rule.end <= rule.start) fail('计划规则时间无效，结束时间必须晚于开始时间。');
+    return { id: text(rule.id, '计划规则编号', 100, true), title: text(rule.title, '计划日程名称', 120, true), days, start: rule.start, end: rule.end };
+  });
+  return { text: text(value.text, '项目实施计划', 5000), defaultStart: value.defaultStart, startDate: value.startDate, endDate: value.endDate, rules };
+}
 export function validateSnapshot(input) {
   if (!input || typeof input !== 'object' || input.version !== 1) fail('不是序日支持的备份文件（需要版本 1）。');
   if (!Array.isArray(input.projects) || !Array.isArray(input.items)) fail('备份缺少项目或任务数据。');
@@ -61,7 +83,18 @@ export function validateSnapshot(input) {
     projectIds.add(projectId);
     if (p.deadline !== null && !validDate(p.deadline)) fail('项目截止日期无效。');
     if (!COLORS.includes(p.color) || typeof p.archived !== 'boolean') fail('项目颜色或归档状态无效。');
-    return { id: projectId, name: text(p.name, '项目名称', 80, true), goal: text(p.goal, '项目目标', 2000), deadline: p.deadline, color: p.color, archived: p.archived, isDemo: p.isDemo === true };
+    const extra = {
+      ...optionalText(p, 'implementationPlan', '项目实施计划', 5000),
+      ...optionalText(p, 'noticeText', '通知原文', 10000),
+      ...optionalText(p, 'location', '项目地点', 500),
+    };
+    if (Object.hasOwn(p, 'deadlineTime')) {
+      if (p.deadlineTime !== '' && !validTime(p.deadlineTime)) fail('项目截止时间无效。');
+      if (p.deadlineTime !== '' && p.deadline === null) fail('设置项目截止时间前需要填写截止日期。');
+      extra.deadlineTime = p.deadlineTime;
+    }
+    if (Object.hasOwn(p, 'implementationSettings')) extra.implementationSettings = planSettings(p.implementationSettings);
+    return { id: projectId, name: text(p.name, '项目名称', 80, true), goal: text(p.goal, '项目目标', 2000), deadline: p.deadline, color: p.color, archived: p.archived, isDemo: p.isDemo === true, ...extra };
   });
   const itemIds = new Set();
   const items = input.items.map((item) => {
@@ -76,7 +109,10 @@ export function validateSnapshot(input) {
     } else if (!validDate(item.date) || !validTime(item.start) || !validTime(item.end) || item.start >= item.end) {
       fail('日程日期或时间无效；结束时间必须晚于开始时间，跨天安排请拆成两条。');
     }
-    return { id: itemId, title: text(item.title, '任务 / 日程名称', 120, true), notes: text(item.notes ?? '', '备注', 2000), projectId: item.projectId, date: item.date, start: item.start, end: item.end, completed: item.completed, isDemo: item.isDemo === true };
+    return { id: itemId, title: text(item.title, '任务 / 日程名称', 120, true), notes: text(item.notes ?? '', '备注', 2000), projectId: item.projectId, date: item.date, start: item.start, end: item.end, completed: item.completed, isDemo: item.isDemo === true,
+      ...optionalText(item, 'location', '日程地点', 500),
+      ...optionalText(item, 'planKey', '计划日程标记', 200),
+    };
   });
   return { version: 1, projects, items };
 }
