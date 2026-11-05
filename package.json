@@ -14,6 +14,7 @@
     "test:push-client": "python3 -u tests/push_client_test.py",
     "test:push-diagnostics": "python3 -u tests/push_diagnostics_test.py",
     "test:push-backend": "node tests/push-backend.test.mjs",
+    "test:push-gateway": "node tests/push-gateway.test.mjs",
     "test": "node tests/model.test.mjs && node tests/store.test.mjs",
     "test:browser": "python3 -u tests/browser_test.py"
   }

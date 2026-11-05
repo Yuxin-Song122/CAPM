@@ -1,0 +1,10 @@
+name = "xuri-push-capm"
+pages_build_output_dir = "public"
+compatibility_date = "2026-11-04"
+
+[vars]
+ALLOWED_ORIGIN = "https://yuxin-song122.github.io"
+
+[[services]]
+binding = "REMINDER_BACKEND"
+service = "xuri-push"
