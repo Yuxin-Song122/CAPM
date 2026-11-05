@@ -1,6 +1,6 @@
 # 提醒后台的 Pages 备用入口
 
-此目录提供 Cloudflare Pages Advanced Mode 的免费备用 HTTPS 入口。**代码已准备好不代表入口已部署成功。** 必须完成权限配置、实际部署和手机联网检查后，才能把部署输出的网址用于「系统提醒」。`pages.dev` 在用户当前网络是否可访问需要实测，不能保证换入口后一定恢复连接。
+此目录提供 Cloudflare Pages Advanced Mode 的免费备用 HTTPS 入口。当前生产入口已发布到 **https://xuri-push-capm.pages.dev**，生产分支为 `main`。Cloudflare API 已确认生产部署成功，且 `REMINDER_BACKEND` 绑定到原来的 `xuri-push` Worker。**手机网络可达性和真实通知送达仍需在 iPhone 上验证**；部署成功不能保证用户当前网络可访问 `pages.dev`。
 
 备用入口只通过 `REMINDER_BACKEND` 服务绑定，把原请求交给同一账户中现有的 `xuri-push` Worker。路径、方法、请求头和请求正文保持原样；不接受任意上游网址，不发起其他网络请求，不记录或缓存配对码、令牌、请求正文。绑定缺失或服务调用失败时返回固定 JSON 503，仅向现有 GitHub Pages 来源提供跨域响应头，不回显内部异常。
 
@@ -31,11 +31,11 @@
 cd push-backend
 npm ci
 cd pages-gateway
-npx wrangler pages project create xuri-push-capm --production-branch main
+npx wrangler pages project create xuri-push-capm --production-branch main --force
 npx wrangler pages deploy public --project-name xuri-push-capm --branch main
 ```
 
-如果项目已经创建，跳过 `project create`，直接部署。若项目名被占用，选一个自己的可用名称，并同步修改此目录 `wrangler.toml` 的 `name` 和命令中的 `--project-name`。这不会重命名现有的 `xuri-push` Worker。
+当前项目已经创建，后续更新跳过 `project create`，直接部署。这里首次创建命令的 `--force` 仅让 Wrangler 4.157 固定使用 Pages 项目流程，避免新项目被自动转换为 Workers；它不用于后续部署。若项目名被占用，选一个自己的可用名称，并同步修改此目录 `wrangler.toml` 的 `name` 和命令中的 `--project-name`。这不会重命名现有的 `xuri-push` Worker。
 
 `wrangler.toml` 中的 `REMINDER_BACKEND` 必须指向当前账户中已部署的 `xuri-push`。部署后在 Pages 项目「设置 → 绑定」中核对该服务绑定，不要给这里另建一套 D1 或 Cron。
 
